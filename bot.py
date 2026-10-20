@@ -23,8 +23,8 @@ LIGLER = {
 
 bildirilen_iy = set()
 bildirilen_ms = set()
+bildirilen_korner = set()
 
-# Türkiye saati (UTC+3)
 TR_TZ = timezone(timedelta(hours=3))
 
 class DummyServer(BaseHTTPRequestHandler):
@@ -66,7 +66,33 @@ def canli_tara():
             dep = match["teams"]["away"]["name"]
             lig_adi = match["league"]["name"]
 
-            # 1. YARI STRATEJİSİ: 15-23 dk, skor 0-0
+            # 1. KORNER STRATEJİSİ (Dakika 15-32 arası, fark <= 1, kotayı koruyan filtre)
+            if 15 <= minute <= 32 and abs(goals_h - goals_a) <= 1 and f_id not in bildirilen_korner:
+                st_res = requests.get(f"https://v3.football.api-sports.io/fixtures/statistics?fixture={f_id}", headers=HEADERS, timeout=15).json()
+                sut, isabet, korner = 0, 0, 0
+                if "response" in st_res and len(st_res["response"]) >= 2:
+                    for team in st_res["response"]:
+                        for s in team["statistics"]:
+                            val = s["value"] or 0
+                            if s["type"] == "Total Shots": sut += int(val)
+                            elif s["type"] == "Shots on Goal": isabet += int(val)
+                            elif s["type"] == "Corner Kicks": korner += int(val)
+
+                    if korner >= 5:
+                        msg = (
+                            f"🚩 <b>ERKEN KORNER BASKISI!</b>\n\n"
+                            f"🏆 <b>Lig:</b> {lig_adi}\n"
+                            f"⚽ <b>Maç:</b> {ev} {goals_h} - {goals_a} {dep}\n"
+                            f"⏱ <b>Dakika:</b> {minute}'\n\n"
+                            f"📊 <b>İstatistikler:</b>\n"
+                            f"• Korner: <b>{korner}</b> 🔥\n"
+                            f"• Şut (İsabetli): {sut} ({isabet})\n\n"
+                            f"💡 <b>Tavsiye:</b> İY Korner Üst / İY 0.5 Gol Takibi"
+                        )
+                        telegram_gonder(msg)
+                        bildirilen_korner.add(f_id)
+
+            # 2. İLK YARI GOL STRATEJİSİ (15-23 dk, skor 0-0)
             if 15 <= minute <= 23 and goals_h == 0 and goals_a == 0:
                 if f_id not in bildirilen_iy:
                     st_res = requests.get(f"https://v3.football.api-sports.io/fixtures/statistics?fixture={f_id}", headers=HEADERS, timeout=15).json()
@@ -94,8 +120,8 @@ def canli_tara():
                             telegram_gonder(msg)
                             bildirilen_iy.add(f_id)
 
-            # 2. YARI STRATEJİSİ: 65-75 dk, fark en fazla 1
-            elif 65 <= minute <= 75 and abs(goals_h - goals_a) <= 1:
+            # 3. İKİNCİ YARI GOL STRATEJİSİ (60-75 dk, fark en fazla 1)
+            elif 60 <= minute <= 75 and abs(goals_h - goals_a) <= 1:
                 if f_id not in bildirilen_ms:
                     st_res = requests.get(f"https://v3.football.api-sports.io/fixtures/statistics?fixture={f_id}", headers=HEADERS, timeout=15).json()
                     sut, isabet, korner = 0, 0, 0
@@ -126,36 +152,32 @@ def canli_tara():
         print("Tarama hatasi:", e)
 
 def ana_dongu():
-    telegram_gonder("🚀 <b>Akıllı Tasarruf Modu Devrede!</b>\nBot maç saatlerine göre otomatik çalışacak, günlük kota aşılmayacak.")
+    telegram_gonder("🚀 <b>90 İstek Kotası Ayarlandı!</b>\n• Hafta içi 4.5 dk aralık\n• 60-75 dk 2. Yarı\n• Ön elemeli Erken Korner devrede.")
     while True:
         simdi = datetime.now(TR_TZ)
         hafta_sonu = simdi.weekday() >= 5
         saat = simdi.hour
-        dakika = simdi.minute
 
-        # Tarama saatleri kontrolü
         calissin_mi = False
-        bekleme_suresi = 300  # Varsayılan uyku: 5 dakika
+        bekleme_suresi = 300
 
         if hafta_sonu:
-            # Hafta sonu: 14:00 - 23:45 arası aktif
             if 14 <= saat <= 23:
                 calissin_mi = True
-                bekleme_suresi = 360  # 6 dakikada bir istek
+                bekleme_suresi = 360  # Hafta sonu 6 dk
         else:
-            # Hafta içi: 19:00 - 23:45 arası aktif
             if 19 <= saat <= 23:
                 calissin_mi = True
-                bekleme_suresi = 210  # 3.5 dakikada bir istek
+                bekleme_suresi = 270  # Hafta içi 4.5 dk (Maks 90 istek hedefi)
 
         if calissin_mi:
             canli_tara()
             time.sleep(bekleme_suresi)
         else:
-            # Maç olmayan saatlerde sunucuyu açık tut ama API'ye istek atma
-            time.sleep(600)  # 10 dakika bekle ve saati tekrar kontrol et
+            time.sleep(600)
 
 if __name__ == "__main__":
     t = threading.Thread(target=keep_alive, daemon=True)
     t.start()
     ana_dongu()
+
