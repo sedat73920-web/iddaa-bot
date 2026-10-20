@@ -34,17 +34,24 @@ class DummyServer(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Bot Aktif!")
 
+    def log_message(self, format, *args):
+        return  # Render loglarini kirlilikten korumak icin
+
 def keep_alive():
-    port = int(os.environ.get("PORT", 8080))
-    server = HTTPServer(("0.0.0.0", port), DummyServer)
-    server.serve_forever()
+    try:
+        port = int(os.environ.get("PORT", 8080))
+        server = HTTPServer(("0.0.0.0", port), DummyServer)
+        print(f"Web port dinleniyor: {port}")
+        server.serve_forever()
+    except Exception as e:
+        print("Web server hatasi (onemsiz):", e)
 
 def telegram_gonder(mesaj):
     try:
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
         requests.post(url, json={"chat_id": CHAT_ID, "text": mesaj, "parse_mode": "HTML"}, timeout=10)
     except Exception as e:
-        print("Telegram hatasi:", e)
+        print("Telegram gonderim hatasi:", e)
 
 def canli_tara():
     try:
@@ -53,21 +60,42 @@ def canli_tara():
             return
 
         for match in res["response"]:
-            f_id = match["fixture"]["id"]
-            minute = match["fixture"]["status"]["elapsed"]
-            lig_id = match["league"]["id"]
+            try:
+                f_id = match["fixture"]["id"]
+                minute = match["fixture"]["status"]["elapsed"]
+                lig_id = match["league"]["id"]
 
-            if lig_id not in LIGLER or not minute:
-                continue
+                if lig_id not in LIGLER or not minute:
+                    continue
 
-            goals_h = match["goals"]["home"] or 0
-            goals_a = match["goals"]["away"] or 0
-            ev = match["teams"]["home"]["name"]
-            dep = match["teams"]["away"]["name"]
-            lig_adi = match["league"]["name"]
+                goals_h = match["goals"]["home"] or 0
+                goals_a = match["goals"]["away"] or 0
+                ev = match["teams"]["home"]["name"]
+                dep = match["teams"]["away"]["name"]
+                lig_adi = match["league"]["name"]
 
-            # 1. ERKEN KORNER STRATEJİSİ (15-32 dk, fark <= 1, Korner >= 5)
-            if 15 <= minute <= 32 and abs(goals_h - goals_a) <= 1 and f_id not in bildirilen_korner:
-                st_res = requests.get(f"https://v3.football.api-sports.io/fixtures/statistics?fixture={f_id}", headers=HEADERS, timeout=15).json()
-                sut, isabet, korner = 0, 0, 0
-                if "response" in st_res and len
+                # 1. ERKEN KORNER STRATEJİSİ (15-32 dk, fark <= 1, Korner >= 5)
+                if 15 <= minute <= 32 and abs(goals_h - goals_a) <= 1 and f_id not in bildirilen_korner:
+                    st_res = requests.get(f"https://v3.football.api-sports.io/fixtures/statistics?fixture={f_id}", headers=HEADERS, timeout=15).json()
+                    sut, isabet, korner = 0, 0, 0
+                    if "response" in st_res and len(st_res["response"]) >= 2:
+                        for team in st_res["response"]:
+                            for s in team["statistics"]:
+                                val = s["value"] or 0
+                                if s["type"] == "Total Shots": sut += int(val)
+                                elif s["type"] == "Shots on Goal": isabet += int(val)
+                                elif s["type"] == "Corner Kicks": korner += int(val)
+
+                        if korner >= 5:
+                            msg = (
+                                f"🚩 <b>ERKEN KORNER BASKISI!</b>\n\n"
+                                f"🏆 <b>Lig:</b> {lig_adi}\n"
+                                f"⚽ <b>Maç:</b> {ev} {goals_h} - {goals_a} {dep}\n"
+                                f"⏱ <b>Dakika:</b> {minute}'\n\n"
+                                f"📊 <b>İstatistikler:</b>\n"
+                                f"• Korner: <b>{korner}</b> 🔥\n"
+                                f"• Şut (İsabetli): {sut} ({isabet})\n\n"
+                                f"💡 <b>Tavsiye:</b> İY Korner Üst / İY 0.5 Gol Takibi"
+                            )
+                            telegram_
+
