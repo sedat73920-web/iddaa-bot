@@ -21,10 +21,7 @@ LIGLER = {
     848, 88, 94, 144, 179, 253, 71, 128
 }
 
-bildirilen_iy = set()
-bildirilen_ms = set()
-bildirilen_korner = set()
-
+bildirilen_maclar = set()
 TR_TZ = timezone(timedelta(hours=3))
 
 class DummyServer(BaseHTTPRequestHandler):
@@ -41,7 +38,6 @@ def keep_alive():
     try:
         port = int(os.environ.get("PORT", 8080))
         server = HTTPServer(("0.0.0.0", port), DummyServer)
-        print(f"Web port dinleniyor: {port}")
         server.serve_forever()
     except Exception as e:
         print("Web server hatasi:", e)
@@ -74,35 +70,9 @@ def canli_tara():
                 dep = match["teams"]["away"]["name"]
                 lig_adi = match["league"]["name"]
 
-                # 1. ERKEN KORNER STRATEJİSİ (15-32 dk, fark <= 1, Korner >= 5)
-                if 15 <= minute <= 32 and abs(goals_h - goals_a) <= 1 and f_id not in bildirilen_korner:
-                    st_res = requests.get(f"https://v3.football.api-sports.io/fixtures/statistics?fixture={f_id}", headers=HEADERS, timeout=15).json()
-                    sut, isabet, korner = 0, 0, 0
-                    if "response" in st_res and len(st_res["response"]) >= 2:
-                        for team in st_res["response"]:
-                            for s in team["statistics"]:
-                                val = s["value"] or 0
-                                if s["type"] == "Total Shots": sut += int(val)
-                                elif s["type"] == "Shots on Goal": isabet += int(val)
-                                elif s["type"] == "Corner Kicks": korner += int(val)
-
-                        if korner >= 5:
-                            msg = (
-                                f"🚩 <b>ERKEN KORNER BASKISI!</b>\n\n"
-                                f"🏆 <b>Lig:</b> {lig_adi}\n"
-                                f"⚽ <b>Maç:</b> {ev} {goals_h} - {goals_a} {dep}\n"
-                                f"⏱ <b>Dakika:</b> {minute}'\n\n"
-                                f"📊 <b>İstatistikler:</b>\n"
-                                f"• Korner: <b>{korner}</b> 🔥\n"
-                                f"• Şut (İsabetli): {sut} ({isabet})\n\n"
-                                f"💡 <b>Tavsiye:</b> İY Korner Üst / İY 0.5 Gol Takibi"
-                            )
-                            telegram_gonder(msg)
-                            bildirilen_korner.add(f_id)
-
-                # 2. İLK YARI GOL STRATEJİSİ (15-23 dk, skor 0-0)
-                if 15 <= minute <= 23 and goals_h == 0 and goals_a == 0:
-                    if f_id not in bildirilen_iy:
+                # 60 - 75 DAKİKA ARALIĞI (2-0 dahil fark en fazla 2)
+                if 60 <= minute <= 75 and abs(goals_h - goals_a) <= 2:
+                    if f_id not in bildirilen_maclar:
                         st_res = requests.get(f"https://v3.football.api-sports.io/fixtures/statistics?fixture={f_id}", headers=HEADERS, timeout=15).json()
                         sut, isabet, korner = 0, 0, 0
                         if "response" in st_res and len(st_res["response"]) >= 2:
@@ -113,56 +83,29 @@ def canli_tara():
                                     elif s["type"] == "Shots on Goal": isabet += int(val)
                                     elif s["type"] == "Corner Kicks": korner += int(val)
 
-                            if sut >= 4 and isabet >= 2 and korner >= 2:
+                            # Olgunlaşmış baskı kriterleri
+                            if sut >= 11 and isabet >= 4 and korner >= 5:
                                 msg = (
-                                    f"🔥 <b>İY 0.5 ÜST SİNYALİ!</b>\n\n"
-                                    f"🏆 <b>Lig:</b> {lig_adi}\n"
-                                    f"⚽ <b>Maç:</b> {ev} vs {dep}\n"
-                                    f"⏱ <b>Dakika:</b> {minute}' | <b>Skor:</b> 0-0\n\n"
-                                    f"📊 <b>İstatistikler:</b>\n"
-                                    f"• Toplam Şut: {sut}\n"
-                                    f"• İsabetli Şut: {isabet}\n"
-                                    f"• Korner: {korner}\n\n"
-                                    f"💡 <b>Tavsiye:</b> İY 0.5 Üst (1.35+ Oran Bekleyin)"
-                                )
-                                telegram_gonder(msg)
-                                bildirilen_iy.add(f_id)
-
-                # 3. İKİNCİ YARI GOL STRATEJİSİ (60-75 dk, fark en fazla 1)
-                elif 60 <= minute <= 75 and abs(goals_h - goals_a) <= 1:
-                    if f_id not in bildirilen_ms:
-                        st_res = requests.get(f"https://v3.football.api-sports.io/fixtures/statistics?fixture={f_id}", headers=HEADERS, timeout=15).json()
-                        sut, isabet, korner = 0, 0, 0
-                        if "response" in st_res and len(st_res["response"]) >= 2:
-                            for team in st_res["response"]:
-                                for s in team["statistics"]:
-                                    val = s["value"] or 0
-                                    if s["type"] == "Total Shots": sut += int(val)
-                                    elif s["type"] == "Shots on Goal": isabet += int(val)
-                                    elif s["type"] == "Corner Kicks": korner += int(val)
-
-                            if sut >= 12 and isabet >= 5 and korner >= 6:
-                                msg = (
-                                    f"⚡️ <b>2. YARI GOL SİNYALİ!</b>\n\n"
+                                    f"⚡️ <b>2. YARI GOL SİNYALİ (60-75 dk)!</b>\n\n"
                                     f"🏆 <b>Lig:</b> {lig_adi}\n"
                                     f"⚽ <b>Maç:</b> {ev} {goals_h} - {goals_a} {dep}\n"
                                     f"⏱ <b>Dakika:</b> {minute}'\n\n"
                                     f"📊 <b>Baskı İstatistikleri:</b>\n"
-                                    f"• Toplam Şut: {sut}\n"
-                                    f"• İsabetli Şut: {isabet}\n"
-                                    f"• Korner: {korner}\n\n"
+                                    f"• Toplam Şut: <b>{sut}</b>\n"
+                                    f"• İsabetli Şut: <b>{isabet}</b>\n"
+                                    f"• Korner: <b>{korner}</b>\n\n"
                                     f"💡 <b>Tavsiye:</b> Sıradaki Gol / Maç Sonu 1 Gol Daha"
                                 )
                                 telegram_gonder(msg)
-                                bildirilen_ms.add(f_id)
+                                bildirilen_maclar.add(f_id)
             except Exception as match_err:
-                print("Tekil mac hatasi:", match_err)
+                print("Mac isleme hatasi:", match_err)
 
     except Exception as e:
         print("Genel tarama hatasi:", e)
 
 def ana_dongu():
-    telegram_gonder("🚀 <b>Bot Hatasız Başlatıldı!</b>\n• Hafta içi 4.5 dk, Hafta sonu 8 dk\n• 60-75 dk 2. Yarı\n• Erken Korner Baskısı aktif.")
+    telegram_gonder("🎯 <b>60-75 Dk Modu (2 Fark Dahil) Aktif!</b>\n• 2-0, 0-2 skorları radara eklendi.\n• Fark 2'den büyükse (3-0 vb.) elenir.\n• Şut >= 11, Korner >= 5 şartı korunuyor.")
     while True:
         try:
             simdi = datetime.now(TR_TZ)
@@ -175,11 +118,11 @@ def ana_dongu():
             if hafta_sonu:
                 if 14 <= saat <= 23:
                     calissin_mi = True
-                    bekleme_suresi = 480
+                    bekleme_suresi = 360
             else:
                 if 19 <= saat <= 23:
                     calissin_mi = True
-                    bekleme_suresi = 270
+                    bekleme_suresi = 240
 
             if calissin_mi:
                 canli_tara()
