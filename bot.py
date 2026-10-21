@@ -63,7 +63,7 @@ def telegram_mesaji_ilet(icerik):
         if yanit.status_code == 200:
             print("[TELEGRAM] Bildirim basariyla gonderildi.")
         else:
-            print(f"[TELEGRAM HATA] Kod: {yanit.status_code}")
+            print(f"[TELEGRAM HATA] Kod: {yanit.status_code} - Yanit: {yanit.text}")
     except Exception as e:
         print(f"[TELEGRAM AG HATASI]: {e}")
 
@@ -172,12 +172,11 @@ def canli_bulteni_tara():
                         if korner >= 5: puan += 1
 
                         if puan >= 2:
-                            # MATEMATİKSEL TEHLİKE İNDEKSİ HESABI
+                            # TEHLİKE İNDEKSİ
                             isabetsiz_sut = max(0, sut - isabet)
                             tehlike_skoru = (isabet * 2.5) + (isabetsiz_sut * 0.8) + (korner * 1.2)
                             tehlike_skoru = round(tehlike_skoru, 1)
 
-                            # KELLY KRİTERİ VE RİSK DERECELENDİRMESİ
                             if tehlike_skoru >= 22.0:
                                 sinyal_tipi = "🔥 <b>YÜKSEK DEĞERLİ BASKI (A+ Sinyal)</b>"
                                 kasa_tavsiyesi = "Kasanın %3.5 - %4'ü"
@@ -216,7 +215,7 @@ def canli_bulteni_tara():
         print(f"[GENEL TARAMA HATA]: {e}")
 
 # ==========================================
-# 6. ANA ZAMANLAYICI (KOTA KORUMALI & 23:55)
+# 6. ANA ÇALIŞMA FONKSİYONU
 # ==========================================
 def ana_calisma_dongusu():
     telegram_mesaji_ilet("🚀 <b>Hibrit Analiz & Kasa Yönetim Sistemi Aktif!</b>\n\n• Dakika: 60 - 75\n• Skor Farkı: <= 2\n• 3'te 2 Kuralı + Tehlike Skoru + Kasa Oranı devrede.\n• Kapanış: 23:55")
@@ -229,15 +228,15 @@ def ana_calisma_dongusu():
             hafta_sonu = anlik.weekday() >= 5
 
             calissin = False
-            bekleme = 300  # Standart 5 dakika (Kota koruması)
+            bekleme = 300
 
             if hafta_sonu:
-                # 14:00 - 23:55 (6 dakikada bir)
+                # 14:00 - 23:55
                 if (14 <= saat < 23) or (saat == 23 and dakika <= 55):
                     calissin = True
                     bekleme = 360
             else:
-                # 18:30 - 23:55 (5 dakikada bir -> Kotayı 100 sınırında tutar)
+                # 18:30 - 23:55
                 if (18 <= saat < 23 and (saat > 18 or dakika >= 30)) or (saat == 23 and dakika <= 55):
                     calissin = True
                     bekleme = 300
@@ -246,13 +245,16 @@ def ana_calisma_dongusu():
                 canli_bulteni_tara()
                 time.sleep(bekleme)
             else:
+                print(f"[BEKLEME] Mac saatleri disi ({saat:02d}:{dakika:02d}). 10 dk uyku...")
                 time.sleep(600)
 
         except Exception as e:
             print(f"[DÖNGÜ HATA]: {e}")
             time.sleep(30)
 
-if __name__ == "__main__":
-    web_is = threading.Thread(target=arka_plan_web_sunucusu_baslat, daemon=True)
-    web_is.start()
-    ana_calisma_dongusu()
+# ==========================================
+# 7. DOĞRUDAN BAŞLATICI (GARANTİ ÇALIŞMA)
+# ==========================================
+# Render gunicorn veya doğrudan python ile başlatsa da her iki iş parçacığı hemen devreye girer:
+threading.Thread(target=arka_plan_web_sunucusu_baslat, daemon=True).start()
+threading.Thread(target=ana_calisma_dongusu, daemon=True).start()
