@@ -6,6 +6,8 @@ import requests
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
+print(">>> [TEST 1] bot.py baslatildi! <<<")
+
 # ==========================================
 # 1. KULLANICI & API YAPILANDIRMASI
 # ==========================================
@@ -30,6 +32,7 @@ aktif_sifirlama_gunu = datetime.now(TURKIYE_SAATI).day
 # ==========================================
 def telegram_mesaji_ilet(icerik):
     try:
+        print(f"[TELEGRAM] Mesaj gonderilmeye calisiliyor...")
         hedef_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         istek_paketi = {
             "chat_id": TELEGRAM_CHAT_ID,
@@ -37,13 +40,10 @@ def telegram_mesaji_ilet(icerik):
             "parse_mode": "HTML",
             "disable_web_page_preview": True
         }
-        yanit = requests.post(hedef_url, json=istek_paketi, timeout=12)
-        if yanit.status_code == 200:
-            print("[TELEGRAM] Bildirim basariyla gonderildi.")
-        else:
-            print(f"[TELEGRAM HATA] Kod: {yanit.status_code}")
+        yanit = requests.post(hedef_url, json=istek_paketi, timeout=10)
+        print(f"[TELEGRAM YANIT] Kod: {yanit.status_code} | Yanit: {yanit.text}")
     except Exception as e:
-        print(f"[TELEGRAM AG HATASI]: {e}")
+        print(f"[TELEGRAM KRITIK HATA]: {e}")
 
 # ==========================================
 # 3. İSTATİSTİK AYRIŞTIRICI
@@ -130,7 +130,6 @@ def canli_bulteni_tara():
                 dep_gol = skor.get("away") if skor.get("away") is not None else 0
                 fark = abs(ev_gol - dep_gol)
 
-                # DAKİKA 60 - 75 & EN FAZLA 2 FARK
                 if 60 <= dakika <= 75 and fark <= 2:
                     if mac_id in bildirilen_maclar_kumesi:
                         continue
@@ -143,7 +142,6 @@ def canli_bulteni_tara():
                     if stat_istek.status_code == 200:
                         sut, isabet, korner = istatistik_verilerini_cozumle(stat_istek.json())
 
-                        # 3 ŞARTTAN EN AZ 2'Sİ: Sut >= 10, Isabet >= 4, Korner >= 5
                         puan = 0
                         if sut >= 10: puan += 1
                         if isabet >= 4: puan += 1
@@ -192,11 +190,11 @@ def canli_bulteni_tara():
         print(f"[GENEL TARAMA HATA]: {e}")
 
 # ==========================================
-# 5. ARKA PLAN TARAMA DÖNGÜSÜ
+# 5. ARKA PLAN DÖNGÜSÜ
 # ==========================================
 def analiz_dongusu():
-    time.sleep(3)
-    telegram_mesaji_ilet("🚀 <b>Hibrit Analiz & Kasa Yönetim Sistemi Aktif!</b>\n\n• Dakika: 60 - 75\n• Skor Farkı: <= 2\n• 3'te 2 Kuralı + Tehlike Skoru + Kasa Oranı devrede.\n• Kapanış: 23:55")
+    print(">>> [TEST 2] analiz_dongusu thread'i basladi! Telegram mesaji atiliyor... <<<")
+    telegram_mesaji_ilet("🚀 <b>Hibrit Analiz Sistemi Devrede!</b>\n\nSistem Render uzerinde aktif, maclar taranmaya baslandi.")
 
     while True:
         try:
@@ -236,16 +234,24 @@ class RenderHealthServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Bot Aktif ve Calisiyor.")
+        self.wfile.write(b"Bot Calisiyor.")
 
     def log_message(self, format, *args):
         return
 
-# Analiz motorunu arka planda baslat
-threading.Thread(target=analiz_dongusu, daemon=True).start()
+def web_sunucu_calistir():
+    try:
+        port = int(os.environ.get("PORT", 8080))
+        print(f">>> [TEST 3] Web sunucusu {port} portunda baslatiliyor... <<<")
+        sunucu = HTTPServer(("0.0.0.0", port), RenderHealthServer)
+        print(f">>> [TEST 4] Web sunucusu basariyla dinliyor! <<<")
+        sunucu.serve_forever()
+    except Exception as e:
+        print(f"[WEB SUNUCU HATA]: {e}")
 
-# Ana sureci web sunucusuna kitle (Render'in 'exited early' yapmasini onler)
-port = int(os.environ.get("PORT", 8080))
-print(f"[BILGI] Web sunucusu {port} portunda kilitlendi, Render kapanmayacak.")
-sunucu = HTTPServer(("0.0.0.0", port), RenderHealthServer)
-sunucu.serve_forever()
+# Threadleri baslat
+t_web = threading.Thread(target=web_sunucu_calistir, daemon=True)
+t_web.start()
+
+# Ana programı canlı tut
+analiz_dongusu()
