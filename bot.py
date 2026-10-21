@@ -6,10 +6,9 @@ import requests
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-# Loglarin Render ekranina aninda dusmesi icin tamponu kapat
 os.environ["PYTHONUNBUFFERED"] = "1"
 
-print(">>> [SISTEM] Zirve Surum & Anlik Durum Bildirimi Devrede! <<<", flush=True)
+print(">>> [SISTEM] Elit Lig & Yuksek Bitiricilik Surumu Devrede! <<<", flush=True)
 
 # ==========================================
 # 1. KULLANICI & API YAPILANDIRMASI
@@ -30,7 +29,11 @@ TURKIYE_SAATI = timezone(timedelta(hours=3))
 bildirilen_maclar = set()
 aktif_gun = datetime.now(TURKIYE_SAATI).day
 
-KISIR_ULKELER = ["egypt", "morocco", "algeria", "tunisia", "iran", "greece", "argentina"]
+# KISIR VE DÜŞÜK KALİTELİ BİTİRİCİLİK LİGLERİ (Doğrudan elenir)
+KISIR_ULKELER = [
+    "egypt", "morocco", "algeria", "tunisia", "iran", "greece", 
+    "argentina", "finland", "iceland", "ireland", "estonia", "latvia", "lithuania"
+]
 KISIR_LIGLER = [
     "serie c", "primera b", "segunda b", "super league 2", 
     "botola", "girabola", "national", "ligue 2"
@@ -104,13 +107,10 @@ def canli_tara():
         kalan_kota = res.headers.get("x-ratelimit-requests-remaining", "Bilinmiyor")
 
         if res.status_code != 200:
-            print(f"[API HATA] HTTP Kod: {res.status_code}", flush=True)
             return
 
         data = res.json()
         maclar = data.get("response", [])
-        print(f"[TARAMA BASLADI] Canli Mac: {len(maclar)} | Kalan Kota: {kalan_kota}", flush=True)
-
         if not maclar:
             return
 
@@ -181,89 +181,86 @@ def canli_tara():
                         toplam_korner = ev_s["korner"] + dep_s["korner"]
                         toplam_faul = ev_s["faul"] + dep_s["faul"]
 
-                        if toplam_korner < 5:
+                        # KORNER VE İSABET ZORUNLU EŞİĞİ
+                        if toplam_korner < 6 or toplam_isabet < 7:
                             continue
 
                         if toplam_faul >= 24:
                             continue
 
-                        kriter = 0
-                        if toplam_sut >= 11: kriter += 1
-                        if toplam_isabet >= 5: kriter += 1
-                        if toplam_korner >= 6: kriter += 1
+                        sut_hizi = toplam_sut / dakika
+                        isabet_orani = (toplam_isabet / toplam_sut) if toplam_sut > 0 else 0
 
-                        if kriter >= 2:
-                            sut_hizi = toplam_sut / dakika
-                            isabet_orani = (toplam_isabet / toplam_sut) if toplam_sut > 0 else 0
+                        # İsabet kalitesi düşük dağa taşa vuruşlar elenir
+                        if sut_hizi < 0.20 or isabet_orani < 0.38:
+                            continue
 
-                            if sut_hizi < 0.17 or isabet_orani < 0.30:
-                                continue
+                        ev_tehlike = (ev_s["isabet"] * 2.5) + ((ev_s["sut"] - ev_s["isabet"]) * 0.8) + (ev_s["korner"] * 1.2) + (dep_s["kurtaris"] * 1.5)
+                        dep_tehlike = (dep_s["isabet"] * 2.5) + ((dep_s["sut"] - dep_s["isabet"]) * 0.8) + (dep_s["korner"] * 1.2) + (ev_s["kurtaris"] * 1.5)
 
-                            ev_tehlike = (ev_s["isabet"] * 2.5) + ((ev_s["sut"] - ev_s["isabet"]) * 0.8) + (ev_s["korner"] * 1.2) + (dep_s["kurtaris"] * 1.5)
-                            dep_tehlike = (dep_s["isabet"] * 2.5) + ((dep_s["sut"] - dep_s["isabet"]) * 0.8) + (dep_s["korner"] * 1.2) + (ev_s["kurtaris"] * 1.5)
+                        ev_tehlike *= 1.15
+                        if kirmizi_dep: ev_tehlike *= 1.25
+                        if kirmizi_ev: dep_tehlike *= 1.20
 
-                            ev_tehlike *= 1.15
-                            if kirmizi_dep: ev_tehlike *= 1.25
-                            if kirmizi_ev: dep_tehlike *= 1.20
+                        toplam_tehlike = ev_tehlike + dep_tehlike
 
-                            toplam_tehlike = ev_tehlike + dep_tehlike
+                        if gollu_lig_mi:
+                            toplam_tehlike *= 1.20
 
-                            if gollu_lig_mi:
-                                toplam_tehlike *= 1.20
+                        toplam_tehlike = round(toplam_tehlike, 1)
 
-                            toplam_tehlike = round(toplam_tehlike, 1)
+                        # Taban puanı 32'ye çekildi
+                        if toplam_tehlike < 32.0:
+                            continue
 
-                            if toplam_tehlike < 26.0:
-                                continue
+                        tercih = "⚽ <b>1 Gol Daha Olur (Sıradaki Gol)</b>"
+                        piyasa_gerekcesi = "Net kaleyi bulan pozisyonlar var, baski tavanda."
+                        kasa_tavsiye = "Kasanin %2'si"
 
-                            tercih = "⚽ <b>1 Gol Daha Olur (Sıradaki Gol)</b>"
-                            piyasa_gerekcesi = "Hucum baskisi suruyor, sure daraldigi icin oran yuksek."
-                            kasa_tavsiye = "Kasanin %2'si"
+                        if (ev_gol == 0 and dep_gol >= 1 and ev_tehlike >= 16.0) or \
+                           (dep_gol == 0 and ev_gol >= 1 and dep_tehlike >= 15.0):
+                            tercih = "🔥 <b>KG VAR</b> veya <b>Siradaki Gol</b>"
+                            piyasa_gerekcesi = "Gerideki takim kaleyi abluka altina aldi."
+                            kasa_tavsiye = "Kasanin %3'u"
 
-                            if (ev_gol == 0 and dep_gol >= 1 and ev_tehlike >= 14.0) or \
-                               (dep_gol == 0 and ev_gol >= 1 and dep_tehlike >= 13.0):
-                                tercih = "🔥 <b>KG VAR</b> veya <b>Siradaki Gol</b>"
-                                piyasa_gerekcesi = "Gerideki takim kaleyi abluka altina aldi."
-                                kasa_tavsiye = "Kasanin %3'u"
+                        elif ev_gol < dep_gol and ev_tehlike >= 18.0 and fark == 1:
+                            tercih = "🛡 <b>1X Cifte Sans</b> veya <b>Ev Sahibi Gol</b>"
+                            piyasa_gerekcesi = "Ev sahibi sahada ezici ustunluk kurdu."
+                            kasa_tavsiye = "Kasanin %3.5'i"
 
-                            elif ev_gol < dep_gol and ev_tehlike >= 17.0 and fark == 1:
-                                tercih = "🛡 <b>1X Cifte Sans</b> veya <b>Ev Sahibi Gol</b>"
-                                piyasa_gerekcesi = "Ev sahibi sahada ezici ustunluk kurdu."
-                                kasa_tavsiye = "Kasanin %3.5'i"
+                        elif toplam_tehlike >= 36.0 and toplam_korner >= 8:
+                            tercih = "💣 <b>A+ ELIT SINYAL: 1 Gol Daha Olur</b>"
+                            piyasa_gerekcesi = "Savunmalar tamamen dustu, kaleciler kritik kurtarislarla direniyor."
+                            kasa_tavsiye = "Kasanin %4'u"
 
-                            elif toplam_tehlike >= 30.0 and toplam_korner >= 7:
-                                tercih = "💣 <b>A+ SINYAL: 1 Gol Daha Olur</b>"
-                                piyasa_gerekcesi = "Savunmalar coktu, gol an meselesi."
-                                kasa_tavsiye = "Kasanin %4'u"
+                        ev_ad = m.get("teams", {}).get("home", {}).get("name", "Ev")
+                        dep_ad = m.get("teams", {}).get("away", {}).get("name", "Dep")
 
-                            ev_ad = m.get("teams", {}).get("home", {}).get("name", "Ev")
-                            dep_ad = m.get("teams", {}).get("away", {}).get("name", "Dep")
+                        kart_durumu = ""
+                        if kirmizi_ev or kirmizi_dep:
+                            kart_durumu = f"\n🟥 <b>Kirmizi Kart:</b> {'Ev 10 Kisi' if kirmizi_ev else 'Dep 10 Kisi'}"
 
-                            kart_durumu = ""
-                            if kirmizi_ev or kirmizi_dep:
-                                kart_durumu = f"\n🟥 <b>Kirmizi Kart:</b> {'Ev 10 Kisi' if kirmizi_ev else 'Dep 10 Kisi'}"
+                        lig_etiketi = "\n⚡ <b>Gollu Lig Bonusu:</b> (+%20 Baski)" if gollu_lig_mi else ""
 
-                            lig_etiketi = "\n⚡ <b>Gollu Lig Bonusu:</b> (+%20 Baski)" if gollu_lig_mi else ""
+                        mesaj = (
+                            f"👑 <b>ELİT PİYASA ANALİZİ</b>\n\n"
+                            f"🏆 <b>Lig:</b> {ulke} - {lig_ad} {lig_etiketi}\n"
+                            f"⚽ <b>Mac:</b> <b>{ev_ad}</b> {ev_gol} - {dep_gol} <b>{dep_ad}</b>\n"
+                            f"⏱ <b>Dakika:</b> {dakika}' {kart_durumu}\n\n"
+                            f"📊 <b>Baski Verileri:</b>\n"
+                            f"• Ev: {ev_s['sut']} Sut ({ev_s['isabet']} Isabet) / {ev_s['korner']} Korner\n"
+                            f"• Dep: {dep_s['sut']} Sut ({dep_s['isabet']} Isabet) / {dep_s['korner']} Korner\n"
+                            f"🧤 <b>Kurtarislar:</b> Ev: {ev_s['kurtaris']} | Dep: {dep_s['kurtaris']}\n"
+                            f"🎯 <b>Tehlike Indeksi:</b> <b>{toplam_tehlike} Puan</b>\n"
+                            f"📈 <b>Isabet Orani:</b> %{int(isabet_orani*100)}\n\n"
+                            f"💡 <b>ONERILEN TERCIH:</b>\n{tercih}\n"
+                            f"📌 <i>Gerekce: {piyasa_gerekcesi}</i>\n\n"
+                            f"💰 <b>Kelly Kasa Girisi:</b> {kasa_tavsiye}"
+                        )
 
-                            mesaj = (
-                                f"👑 <b>ZIRVE COKLU PIYASA ANALIZI</b>\n\n"
-                                f"🏆 <b>Lig:</b> {ulke} - {lig_ad} {lig_etiketi}\n"
-                                f"⚽ <b>Mac:</b> <b>{ev_ad}</b> {ev_gol} - {dep_gol} <b>{dep_ad}</b>\n"
-                                f"⏱ <b>Dakika:</b> {dakika}' {kart_durumu}\n\n"
-                                f"📊 <b>Baski Verileri:</b>\n"
-                                f"• Ev: {ev_s['sut']} Sut ({ev_s['isabet']} Isabet) / {ev_s['korner']} Korner\n"
-                                f"• Dep: {dep_s['sut']} Sut ({dep_s['isabet']} Isabet) / {dep_s['korner']} Korner\n"
-                                f"🧤 <b>Kurtarislar:</b> Ev: {ev_s['kurtaris']} | Dep: {dep_s['kurtaris']}\n"
-                                f"🎯 <b>Tehlike Indeksi:</b> <b>{toplam_tehlike} Puan</b>\n"
-                                f"📈 <b>Sut Hassasiyeti:</b> %{int(isabet_orani*100)}\n\n"
-                                f"💡 <b>ONERILEN TERCIH:</b>\n{tercih}\n"
-                                f"📌 <i>Gerekce: {piyasa_gerekcesi}</i>\n\n"
-                                f"💰 <b>Kelly Kasa Girisi:</b> {kasa_tavsiye}"
-                            )
-
-                            telegram_ilet(mesaj)
-                            bildirilen_maclar.add(mac_id)
-                            print(f"[BILDIRILDI] {ev_ad} vs {dep_ad} | Skor: {toplam_tehlike}", flush=True)
+                        telegram_ilet(mesaj)
+                        bildirilen_maclar.add(mac_id)
+                        print(f"[BILDIRILDI] {ev_ad} vs {dep_ad} | Skor: {toplam_tehlike}", flush=True)
 
             except Exception as tekil_e:
                 print(f"[MAC HATA]: {tekil_e}", flush=True)
@@ -278,22 +275,7 @@ def canli_tara():
 # ==========================================
 def analiz_dongusu():
     time.sleep(3)
-    
-    # BASLAR BASLAMAZ CANLI DURUMU TELEGRAMA BAS
-    try:
-        r = requests.get(API_LIVE_URL, headers=API_HEADERS, timeout=10)
-        kalan = r.headers.get("x-ratelimit-requests-remaining", "?")
-        toplam_canli = len(r.json().get("response", [])) if r.status_code == 200 else 0
-        telegram_ilet(
-            f"📡 <b>CANLI SISTEM RAPORU</b>\n\n"
-            f"✅ Bot ayakta ve uyanik.\n"
-            f"⚽ Sahadaki Canli Mac Sayisi: <b>{toplam_canli}</b>\n"
-            f"📊 Kalan API Kotasi: <b>{kalan}</b>\n"
-            f"⏱ Saat: {datetime.now(TURKIYE_SAATI).strftime('%H:%M:%S')}\n\n"
-            f"<i>Tarama dongusu kesintisiz calisiyor...</i>"
-        )
-    except Exception as e:
-        telegram_ilet(f"⚠️ Sistem acildi ama ilk durum alinamadi: {e}")
+    telegram_ilet("👑 <b>Elit Karar Motoru Devrede!</b>\n\n• Finlandiya/Baltik ligleri engellendi.\n• Minimum 7 İsabet & 32 Puan eşiği aktif.\n• Dağa taşa vuruşlar elendi.")
 
     while True:
         try:
