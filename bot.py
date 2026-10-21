@@ -6,7 +6,10 @@ import requests
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-print(">>> [SISTEM] 5 Dakikalik Uyku Savar & Zirve Karar Motoru Devrede! <<<")
+# Loglarin Render ekranina aninda dusmesi icin tamponu kapat
+os.environ["PYTHONUNBUFFERED"] = "1"
+
+print(">>> [SISTEM] Zirve Surum & Anlik Durum Bildirimi Devrede! <<<", flush=True)
 
 # ==========================================
 # 1. KULLANICI & API YAPILANDIRMASI
@@ -27,14 +30,11 @@ TURKIYE_SAATI = timezone(timedelta(hours=3))
 bildirilen_maclar = set()
 aktif_gun = datetime.now(TURKIYE_SAATI).day
 
-# KISIR ÜLKELER & LİGLER (Doğrudan elenir)
 KISIR_ULKELER = ["egypt", "morocco", "algeria", "tunisia", "iran", "greece", "argentina"]
 KISIR_LIGLER = [
     "serie c", "primera b", "segunda b", "super league 2", 
     "botola", "girabola", "national", "ligue 2"
 ]
-
-# ÇÖP LİGLER (İstatistik sorgusu atılmaz)
 COPE_LIGLER = ["u19", "u20", "u21", "women", "kadınlar", "amateur", "reserve"]
 
 # ==========================================
@@ -51,9 +51,9 @@ def telegram_ilet(mesaj):
         }
         res = requests.post(url, json=payload, timeout=12)
         if res.status_code != 200:
-            print(f"[TELEGRAM HATA] Kod: {res.status_code}")
+            print(f"[TELEGRAM HATA] Kod: {res.status_code}", flush=True)
     except Exception as e:
-        print(f"[TELEGRAM AG HATA]: {e}")
+        print(f"[TELEGRAM AG HATA]: {e}", flush=True)
 
 # ==========================================
 # 3. İSTATİSTİK AYRIŞTIRICI
@@ -97,17 +97,20 @@ def canli_tara():
     if bugun != aktif_gun:
         bildirilen_maclar.clear()
         aktif_gun = bugun
-        print("[HAFIZA] Yeni gun, bildirim havuzu temizlendi.")
+        print("[HAFIZA] Yeni gun, bildirim havuzu temizlendi.", flush=True)
 
     try:
         res = requests.get(API_LIVE_URL, headers=API_HEADERS, timeout=15)
         kalan_kota = res.headers.get("x-ratelimit-requests-remaining", "Bilinmiyor")
 
         if res.status_code != 200:
+            print(f"[API HATA] HTTP Kod: {res.status_code}", flush=True)
             return
 
         data = res.json()
         maclar = data.get("response", [])
+        print(f"[TARAMA BASLADI] Canli Mac: {len(maclar)} | Kalan Kota: {kalan_kota}", flush=True)
+
         if not maclar:
             return
 
@@ -260,22 +263,37 @@ def canli_tara():
 
                             telegram_ilet(mesaj)
                             bildirilen_maclar.add(mac_id)
-                            print(f"[BILDIRILDI] {ev_ad} vs {dep_ad} | Skor: {toplam_tehlike}")
+                            print(f"[BILDIRILDI] {ev_ad} vs {dep_ad} | Skor: {toplam_tehlike}", flush=True)
 
             except Exception as tekil_e:
-                print(f"[MAC HATA]: {tekil_e}")
+                print(f"[MAC HATA]: {tekil_e}", flush=True)
 
-        print(f"[TARAMA BITTI] Canli: {len(maclar)} | Kalan Kota: {kalan_kota}")
+        print(f"[TARAMA BITTI] Kalan Kota: {kalan_kota}", flush=True)
 
     except Exception as genel_e:
-        print(f"[TARAMA GENEL HATA]: {genel_e}")
+        print(f"[TARAMA GENEL HATA]: {genel_e}", flush=True)
 
 # ==========================================
 # 5. DÖNGÜ & GÜVENLİK
 # ==========================================
 def analiz_dongusu():
     time.sleep(3)
-    telegram_ilet("👑 <b>Zirve Karar Motoru Devrede!</b>\n\n• Uyku savar periyodu 5 dakikaya indirildi.\n• Misir/Arap ligi bonus acigi kapatildi.\n• Minimum 5 Korner & 26 Puan kuralı aktif.")
+    
+    # BASLAR BASLAMAZ CANLI DURUMU TELEGRAMA BAS
+    try:
+        r = requests.get(API_LIVE_URL, headers=API_HEADERS, timeout=10)
+        kalan = r.headers.get("x-ratelimit-requests-remaining", "?")
+        toplam_canli = len(r.json().get("response", [])) if r.status_code == 200 else 0
+        telegram_ilet(
+            f"📡 <b>CANLI SISTEM RAPORU</b>\n\n"
+            f"✅ Bot ayakta ve uyanik.\n"
+            f"⚽ Sahadaki Canli Mac Sayisi: <b>{toplam_canli}</b>\n"
+            f"📊 Kalan API Kotasi: <b>{kalan}</b>\n"
+            f"⏱ Saat: {datetime.now(TURKIYE_SAATI).strftime('%H:%M:%S')}\n\n"
+            f"<i>Tarama dongusu kesintisiz calisiyor...</i>"
+        )
+    except Exception as e:
+        telegram_ilet(f"⚠️ Sistem acildi ama ilk durum alinamadi: {e}")
 
     while True:
         try:
@@ -300,26 +318,26 @@ def analiz_dongusu():
                 canli_tara()
                 time.sleep(bekleme)
             else:
-                print(f"[BEKLEME] Mac saatleri disi ({saat:02d}:{dakika:02d}). 10 dk uyku...")
+                print(f"[BEKLEME] Mac saatleri disi ({saat:02d}:{dakika:02d}). 10 dk uyku...", flush=True)
                 time.sleep(600)
 
         except Exception as e:
-            print(f"[DÖNGÜ HATA]: {e}")
+            print(f"[DÖNGÜ HATA]: {e}", flush=True)
             time.sleep(30)
 
 # ==========================================
 # 6. UYKU SAVAR (5 DAKİKADA BİR SELF-PING)
 # ==========================================
 def uyku_savar_dongusu():
-    time.sleep(20)
+    time.sleep(15)
     sunucu_url = "https://iddaa-bot-05vw.onrender.com"
     while True:
         try:
             r = requests.get(sunucu_url, timeout=10)
-            print(f"[NOBETCI] 5 Dk Ping basarili. Kod: {r.status_code}")
+            print(f"[NOBETCI] 5 Dk Ping basarili. Kod: {r.status_code}", flush=True)
         except Exception as e:
-            print(f"[NOBETCI UYARI]: Ping atilamadi ({e})")
-        time.sleep(300)  # Tam 5 dakikada bir sunucuyu durtur
+            print(f"[NOBETCI UYARI]: Ping atilamadi ({e})", flush=True)
+        time.sleep(300)
 
 # ==========================================
 # 7. RENDER WEBSERVER
@@ -338,10 +356,10 @@ def web_sunucu_baslat():
     try:
         port = int(os.environ.get("PORT", 8080))
         sunucu = HTTPServer(("0.0.0.0", port), RenderHealthServer)
-        print(f"[WEB] Port {port} kilitlendi.")
+        print(f"[WEB] Port {port} kilitlendi.", flush=True)
         sunucu.serve_forever()
     except Exception as e:
-        print(f"[WEB HATA]: {e}")
+        print(f"[WEB HATA]: {e}", flush=True)
 
 threading.Thread(target=web_sunucu_baslat, daemon=True).start()
 threading.Thread(target=uyku_savar_dongusu, daemon=True).start()
