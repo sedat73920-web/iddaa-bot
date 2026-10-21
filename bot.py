@@ -26,29 +26,7 @@ bildirilen_maclar_kumesi = set()
 aktif_sifirlama_gunu = datetime.now(TURKIYE_SAATI).day
 
 # ==========================================
-# 2. UYKU ÖNLEYİCİ WEBSERVER
-# ==========================================
-class RenderHealthServer(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.end_headers()
-        self.wfile.write(b"Bot Aktif")
-
-    def log_message(self, format, *args):
-        return
-
-def arka_plan_web_sunucusu_baslat():
-    try:
-        atanan_port = int(os.environ.get("PORT", 8080))
-        sunucu = HTTPServer(("0.0.0.0", atanan_port), RenderHealthServer)
-        print(f"[BILGI] Web sunucusu {atanan_port} portunda baslatildi.")
-        sunucu.serve_forever()
-    except Exception as e:
-        print(f"[UYARI] Web sunucu hatasi: {e}")
-
-# ==========================================
-# 3. TELEGRAM MESAJ SERVİSİ
+# 2. TELEGRAM MESAJ SERVİSİ
 # ==========================================
 def telegram_mesaji_ilet(icerik):
     try:
@@ -63,12 +41,12 @@ def telegram_mesaji_ilet(icerik):
         if yanit.status_code == 200:
             print("[TELEGRAM] Bildirim basariyla gonderildi.")
         else:
-            print(f"[TELEGRAM HATA] Kod: {yanit.status_code} - Yanit: {yanit.text}")
+            print(f"[TELEGRAM HATA] Kod: {yanit.status_code}")
     except Exception as e:
         print(f"[TELEGRAM AG HATASI]: {e}")
 
 # ==========================================
-# 4. GELİŞMİŞ İSTATİSTİK & TEHLİKE ANALİZİ
+# 3. İSTATİSTİK AYRIŞTIRICI
 # ==========================================
 def istatistik_verilerini_cozumle(gelen_veri):
     toplam_sut = 0
@@ -107,7 +85,7 @@ def istatistik_verilerini_cozumle(gelen_veri):
     return toplam_sut, isabetli_sut, korner
 
 # ==========================================
-# 5. CANLI MAÇ TARAMA MOTORU
+# 4. CANLI MAÇ TARAMA MOTORU
 # ==========================================
 def canli_bulteni_tara():
     global bildirilen_maclar_kumesi, aktif_sifirlama_gunu
@@ -172,7 +150,6 @@ def canli_bulteni_tara():
                         if korner >= 5: puan += 1
 
                         if puan >= 2:
-                            # TEHLİKE İNDEKSİ
                             isabetsiz_sut = max(0, sut - isabet)
                             tehlike_skoru = (isabet * 2.5) + (isabetsiz_sut * 0.8) + (korner * 1.2)
                             tehlike_skoru = round(tehlike_skoru, 1)
@@ -204,7 +181,7 @@ def canli_bulteni_tara():
 
                             telegram_mesaji_ilet(mesaj)
                             bildirilen_maclar_kumesi.add(mac_id)
-                            print(f"[BILDIRILDI] {ev_takim} vs {dep_takim} | Skor: {tehlike_skoru}")
+                            print(f"[BILDIRILDI] {ev_takim} vs {dep_takim}")
 
             except Exception as e:
                 print(f"[TEKIL MAC HATA]: {e}")
@@ -215,9 +192,10 @@ def canli_bulteni_tara():
         print(f"[GENEL TARAMA HATA]: {e}")
 
 # ==========================================
-# 6. ANA ÇALIŞMA FONKSİYONU
+# 5. ARKA PLAN TARAMA DÖNGÜSÜ
 # ==========================================
-def ana_calisma_dongusu():
+def analiz_dongusu():
+    time.sleep(3)
     telegram_mesaji_ilet("🚀 <b>Hibrit Analiz & Kasa Yönetim Sistemi Aktif!</b>\n\n• Dakika: 60 - 75\n• Skor Farkı: <= 2\n• 3'te 2 Kuralı + Tehlike Skoru + Kasa Oranı devrede.\n• Kapanış: 23:55")
 
     while True:
@@ -231,12 +209,10 @@ def ana_calisma_dongusu():
             bekleme = 300
 
             if hafta_sonu:
-                # 14:00 - 23:55
                 if (14 <= saat < 23) or (saat == 23 and dakika <= 55):
                     calissin = True
                     bekleme = 360
             else:
-                # 18:30 - 23:55
                 if (18 <= saat < 23 and (saat > 18 or dakika >= 30)) or (saat == 23 and dakika <= 55):
                     calissin = True
                     bekleme = 300
@@ -253,8 +229,23 @@ def ana_calisma_dongusu():
             time.sleep(30)
 
 # ==========================================
-# 7. DOĞRUDAN BAŞLATICI (GARANTİ ÇALIŞMA)
+# 6. RENDER UYKU ÖNLEYİCİ WEBSERVER
 # ==========================================
-# Render gunicorn veya doğrudan python ile başlatsa da her iki iş parçacığı hemen devreye girer:
-threading.Thread(target=arka_plan_web_sunucusu_baslat, daemon=True).start()
-threading.Thread(target=ana_calisma_dongusu, daemon=True).start()
+class RenderHealthServer(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"Bot Aktif ve Calisiyor.")
+
+    def log_message(self, format, *args):
+        return
+
+# Analiz motorunu arka planda baslat
+threading.Thread(target=analiz_dongusu, daemon=True).start()
+
+# Ana sureci web sunucusuna kitle (Render'in 'exited early' yapmasini onler)
+port = int(os.environ.get("PORT", 8080))
+print(f"[BILGI] Web sunucusu {port} portunda kilitlendi, Render kapanmayacak.")
+sunucu = HTTPServer(("0.0.0.0", port), RenderHealthServer)
+sunucu.serve_forever()
