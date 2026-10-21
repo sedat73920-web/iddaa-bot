@@ -9,7 +9,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 # Log tamponunu kapat, Render ekranına anında düşsün
 os.environ["PYTHONUNBUFFERED"] = "1"
 
-print(">>> [SISTEM] Nihai Hafta Sonu Tasarruflu & Altin Denge Surumu Devrede! <<<", flush=True)
+print(">>> [SISTEM] Hafta Sonu 16:00 & Altin Denge Surumu Devrede! <<<", flush=True)
 
 # ==========================================
 # 1. KULLANICI & API YAPILANDIRMASI
@@ -134,7 +134,7 @@ def canli_tara():
                 tam_lig = f"{lig_ad} {ulke}".lower()
                 ulke_kucuk = ulke.lower()
 
-                # Lig filtreleri (Kotayı korumak için istatistik çekmeden önce elenir)
+                # Lig filtreleri (İstatistik çekmeden önce elenir)
                 if any(cl in tam_lig for cl in COPE_LIGLER):
                     continue
 
@@ -146,7 +146,6 @@ def canli_tara():
                 dep_gol = goals.get("away") if goals.get("away") is not None else 0
                 fark = abs(ev_gol - dep_gol)
 
-                # 60-75. Dakika ve Skor Farkı En Fazla 2
                 if 60 <= dakika <= 75 and fark <= 2:
                     if mac_id in bildirilen_maclar:
                         continue
@@ -175,7 +174,6 @@ def canli_tara():
                             if g_dak > son_gol_dakikasi:
                                 son_gol_dakikasi = g_dak
 
-                    # Son 4 dakikada gol olduysa oran oturmamıştır, geç
                     if dakika - son_gol_dakikasi < 4:
                         continue
 
@@ -188,7 +186,7 @@ def canli_tara():
                         toplam_korner = ev_s["korner"] + dep_s["korner"]
                         toplam_faul = ev_s["faul"] + dep_s["faul"]
 
-                        # DENGELİ EŞİKLER: En az 4 korner ve en az 5 isabet
+                        # DENGELİ EŞİKLER
                         if toplam_korner < 4 or toplam_isabet < 5:
                             continue
 
@@ -198,7 +196,6 @@ def canli_tara():
                         sut_hizi = toplam_sut / dakika
                         isabet_orani = (toplam_isabet / toplam_sut) if toplam_sut > 0 else 0
 
-                        # İsabet oranı tabanı %28
                         if sut_hizi < 0.16 or isabet_orani < 0.28:
                             continue
 
@@ -216,7 +213,6 @@ def canli_tara():
 
                         toplam_tehlike = round(toplam_tehlike, 1)
 
-                        # Dengeli Tehlike Puanı: 25.0
                         if toplam_tehlike < 25.0:
                             continue
 
@@ -283,10 +279,10 @@ def canli_tara():
 def analiz_dongusu():
     time.sleep(3)
     telegram_ilet(
-        "🚀 <b>GOL AVCISI: Zirve & Hafta Sonu Modu Devrede!</b>\n\n"
-        "• Hafta sonu kota koruması otomatik ayarlandı (7 dk döngü).\n"
-        "• Kısır/alt ligler elendi, elit liglerde altın denge eşikleri kuruldu.\n"
-        "• Sistem kesintisiz çalışıyor."
+        "🚀 <b>GOL AVCISI: Zirve Modu Devrede!</b>\n\n"
+        "• Hafta sonu saat 16:00 - 23:55 arasına ayarlandı.\n"
+        "• Hafta içi 18:30 - 23:55 arası aktif.\n"
+        "• Sözdizimi hatası giderildi, tarama motoru hazır."
     )
 
     while True:
@@ -294,18 +290,18 @@ def analiz_dongusu():
             anlik = datetime.now(TURKIYE_SAATI)
             saat = anlik.hour
             dakika = anlik.minute
-            hafta_sonu = anlik.weekday() >= 5  # Cumartesi (5) ve Pazar (6)
+            hafta_sonu = anlik.weekday() >= 5  # Cumartesi ve Pazar
 
             calissin = False
-            bekleme = 300  # Hafta içi standart: 5 dakika
+            bekleme = 300  # Standart 5 dakika
 
             if hafta_sonu:
-                # Cumartesi ve Pazar: 14:00 - 23:55 (7 dakikada bir tarama = 85 istek)
-                if (14 <= saat < 23) or (saat == 23 and dakika <= 55):
+                # Cumartesi ve Pazar: 16:00 - 23:55 (Yaklaşık 8 saat = ~95 istek)
+                if (16 <= saat < 23) or (saat == 23 and dakika <= 55):
                     calissin = True
-                    bekleme = 420
+                    bekleme = 300
             else:
-                # Hafta içi: 18:30 - 23:55 (5 dakikada bir tarama = 65 istek)
+                # Hafta içi: 18:30 - 23:55
                 if (18 <= saat < 23 and (saat > 18 or dakika >= 30)) or (saat == 23 and dakika <= 55):
                     calissin = True
                     bekleme = 300
@@ -357,5 +353,8 @@ def web_sunucu_baslat():
     except Exception as e:
         print(f"[WEB HATA]: {e}", flush=True)
 
+# Thread'ler tek parça halinde başlatılıyor
 threading.Thread(target=web_sunucu_baslat, daemon=True).start()
-threading.Thread(target=uyku_savar_dongusu, daemon=True).
+threading.Thread(target=uyku_savar_dongusu, daemon=True).start()
+
+analiz_dongusu()
