@@ -6,7 +6,7 @@ import requests
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-print(">>> [SISTEM] Zirve Surum Baslatiliyor... <<<")
+print(">>> [SISTEM] 5 Dakikalik Uyku Savar & Zirve Karar Motoru Devrede! <<<")
 
 # ==========================================
 # 1. KULLANICI & API YAPILANDIRMASI
@@ -27,17 +27,14 @@ TURKIYE_SAATI = timezone(timedelta(hours=3))
 bildirilen_maclar = set()
 aktif_gun = datetime.now(TURKIYE_SAATI).day
 
-GOLLU_LIGLER = [
-    "eredivisie", "eerste divisie", "bundesliga", "eliteserien", 
-    "allsvenskan", "super league", "pro league", "premier league", 
-    "championship", "bundesliga 2", "super lig"
-]
-
+# KISIR ÜLKELER & LİGLER (Doğrudan elenir)
+KISIR_ULKELER = ["egypt", "morocco", "algeria", "tunisia", "iran", "greece", "argentina"]
 KISIR_LIGLER = [
     "serie c", "primera b", "segunda b", "super league 2", 
     "botola", "girabola", "national", "ligue 2"
 ]
 
+# ÇÖP LİGLER (İstatistik sorgusu atılmaz)
 COPE_LIGLER = ["u19", "u20", "u21", "women", "kadınlar", "amateur", "reserve"]
 
 # ==========================================
@@ -128,8 +125,12 @@ def canli_tara():
                 lig_ad = league.get("name", "Lig")
                 ulke = league.get("country", "")
                 tam_lig = f"{lig_ad} {ulke}".lower()
+                ulke_kucuk = ulke.lower()
 
                 if any(cl in tam_lig for cl in COPE_LIGLER):
+                    continue
+
+                if any(ku in ulke_kucuk for ku in KISIR_ULKELER):
                     continue
 
                 goals = m.get("goals", {})
@@ -141,7 +142,12 @@ def canli_tara():
                     if mac_id in bildirilen_maclar:
                         continue
 
-                    gollu_lig_mi = any(gl in tam_lig for gl in GOLLU_LIGLER)
+                    gollu_lig_mi = False
+                    if "netherlands" in ulke_kucuk or "germany" in ulke_kucuk or "norway" in ulke_kucuk or "sweden" in ulke_kucuk:
+                        gollu_lig_mi = True
+                    elif "england" in ulke_kucuk and ("premier league" in tam_lig or "championship" in tam_lig):
+                        gollu_lig_mi = True
+
                     kisir_lig_mi = any(kl in tam_lig for kl in KISIR_LIGLER)
 
                     kirmizi_ev, kirmizi_dep = False, False
@@ -172,19 +178,22 @@ def canli_tara():
                         toplam_korner = ev_s["korner"] + dep_s["korner"]
                         toplam_faul = ev_s["faul"] + dep_s["faul"]
 
+                        if toplam_korner < 5:
+                            continue
+
                         if toplam_faul >= 24:
                             continue
 
                         kriter = 0
-                        if toplam_sut >= 10: kriter += 1
-                        if toplam_isabet >= 4: kriter += 1
-                        if toplam_korner >= 5: kriter += 1
+                        if toplam_sut >= 11: kriter += 1
+                        if toplam_isabet >= 5: kriter += 1
+                        if toplam_korner >= 6: kriter += 1
 
                         if kriter >= 2:
                             sut_hizi = toplam_sut / dakika
                             isabet_orani = (toplam_isabet / toplam_sut) if toplam_sut > 0 else 0
 
-                            if sut_hizi < 0.16 or isabet_orani < 0.28:
+                            if sut_hizi < 0.17 or isabet_orani < 0.30:
                                 continue
 
                             ev_tehlike = (ev_s["isabet"] * 2.5) + ((ev_s["sut"] - ev_s["isabet"]) * 0.8) + (ev_s["korner"] * 1.2) + (dep_s["kurtaris"] * 1.5)
@@ -201,28 +210,28 @@ def canli_tara():
 
                             toplam_tehlike = round(toplam_tehlike, 1)
 
-                            if kisir_lig_mi and toplam_tehlike < 25.0:
+                            if toplam_tehlike < 26.0:
                                 continue
 
                             tercih = "⚽ <b>1 Gol Daha Olur (Sıradaki Gol)</b>"
                             piyasa_gerekcesi = "Hucum baskisi suruyor, sure daraldigi icin oran yuksek."
                             kasa_tavsiye = "Kasanin %2'si"
 
-                            if (ev_gol == 0 and dep_gol >= 1 and ev_tehlike >= 13.0) or \
-                               (dep_gol == 0 and ev_gol >= 1 and dep_tehlike >= 12.0):
+                            if (ev_gol == 0 and dep_gol >= 1 and ev_tehlike >= 14.0) or \
+                               (dep_gol == 0 and ev_gol >= 1 and dep_tehlike >= 13.0):
                                 tercih = "🔥 <b>KG VAR</b> veya <b>Siradaki Gol</b>"
                                 piyasa_gerekcesi = "Gerideki takim kaleyi abluka altina aldi."
                                 kasa_tavsiye = "Kasanin %3'u"
 
-                            elif ev_gol < dep_gol and ev_tehlike >= 16.0 and fark == 1:
+                            elif ev_gol < dep_gol and ev_tehlike >= 17.0 and fark == 1:
                                 tercih = "🛡 <b>1X Cifte Sans</b> veya <b>Ev Sahibi Gol</b>"
                                 piyasa_gerekcesi = "Ev sahibi sahada ezici ustunluk kurdu."
                                 kasa_tavsiye = "Kasanin %3.5'i"
 
-                            elif toplam_tehlike >= 25.0:
+                            elif toplam_tehlike >= 30.0 and toplam_korner >= 7:
                                 tercih = "💣 <b>A+ SINYAL: 1 Gol Daha Olur</b>"
                                 piyasa_gerekcesi = "Savunmalar coktu, gol an meselesi."
-                                kasa_tavsiye = "Kasanin %4.5'i"
+                                kasa_tavsiye = "Kasanin %4'u"
 
                             ev_ad = m.get("teams", {}).get("home", {}).get("name", "Ev")
                             dep_ad = m.get("teams", {}).get("away", {}).get("name", "Dep")
@@ -266,7 +275,7 @@ def canli_tara():
 # ==========================================
 def analiz_dongusu():
     time.sleep(3)
-    telegram_ilet("👑 <b>Zirve Karar Motoru & Kesintisiz Uyku Savar Aktif!</b>\n\n• Render uyku modu engellendi.\n• Canli maclar taranmaya baslandi.\n• Kapanis: 23:55")
+    telegram_ilet("👑 <b>Zirve Karar Motoru Devrede!</b>\n\n• Uyku savar periyodu 5 dakikaya indirildi.\n• Misir/Arap ligi bonus acigi kapatildi.\n• Minimum 5 Korner & 26 Puan kuralı aktif.")
 
     while True:
         try:
@@ -299,18 +308,18 @@ def analiz_dongusu():
             time.sleep(30)
 
 # ==========================================
-# 6. UYKU ENGELLEYİCİ (SELF-PING NÖBETÇİSİ)
+# 6. UYKU SAVAR (5 DAKİKADA BİR SELF-PING)
 # ==========================================
 def uyku_savar_dongusu():
-    time.sleep(30)
+    time.sleep(20)
     sunucu_url = "https://iddaa-bot-05vw.onrender.com"
     while True:
         try:
             r = requests.get(sunucu_url, timeout=10)
-            print(f"[NOBETCI] Ping basarili. Kod: {r.status_code}")
+            print(f"[NOBETCI] 5 Dk Ping basarili. Kod: {r.status_code}")
         except Exception as e:
             print(f"[NOBETCI UYARI]: Ping atilamadi ({e})")
-        time.sleep(600)
+        time.sleep(300)  # Tam 5 dakikada bir sunucuyu durtur
 
 # ==========================================
 # 7. RENDER WEBSERVER
