@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # ==========================================
-# 1. KULLANICI & API BİLGİLERİ
+# 1. KULLANICI & API YAPILANDIRMASI
 # ==========================================
 TELEGRAM_BOT_TOKEN = "8912502756:AAHe_0qe2dokTtRXh1EYpgVexOTuCHdZk6Q"
 TELEGRAM_CHAT_ID = "769164600"
@@ -26,7 +26,7 @@ bildirilen_maclar_kumesi = set()
 aktif_sifirlama_gunu = datetime.now(TURKIYE_SAATI).day
 
 # ==========================================
-# 2. UYKU ÖNLEYİCİ WEB SUNUCUSU
+# 2. UYKU ÖNLEYİCİ WEBSERVER
 # ==========================================
 class RenderHealthServer(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -42,7 +42,7 @@ def arka_plan_web_sunucusu_baslat():
     try:
         atanan_port = int(os.environ.get("PORT", 8080))
         sunucu = HTTPServer(("0.0.0.0", atanan_port), RenderHealthServer)
-        print(f"[BILGI] Web sunucu {atanan_port} portunda baslatildi.")
+        print(f"[BILGI] Web sunucusu {atanan_port} portunda baslatildi.")
         sunucu.serve_forever()
     except Exception as e:
         print(f"[UYARI] Web sunucu hatasi: {e}")
@@ -68,7 +68,7 @@ def telegram_mesaji_ilet(icerik):
         print(f"[TELEGRAM AG HATASI]: {e}")
 
 # ==========================================
-# 4. İSTATİSTİK AYRIŞTIRICI
+# 4. GELİŞMİŞ İSTATİSTİK & TEHLİKE ANALİZİ
 # ==========================================
 def istatistik_verilerini_cozumle(gelen_veri):
     toplam_sut = 0
@@ -167,35 +167,45 @@ def canli_bulteni_tara():
 
                         # 3 ŞARTTAN EN AZ 2'Sİ: Sut >= 10, Isabet >= 4, Korner >= 5
                         puan = 0
-                        if sut >= 10:
-                            puan += 1
-                        if isabet >= 4:
-                            puan += 1
-                        if korner >= 5:
-                            puan += 1
-
-                        print(f"[KONTROL] {ev_takim} {ev_gol}-{dep_gol} {dep_takim} ({dakika}') | Sut: {sut} | Isabet: {isabet} | Korner: {korner} | Puan: {puan}/3")
+                        if sut >= 10: puan += 1
+                        if isabet >= 4: puan += 1
+                        if korner >= 5: puan += 1
 
                         if puan >= 2:
+                            # MATEMATİKSEL TEHLİKE İNDEKSİ HESABI
+                            isabetsiz_sut = max(0, sut - isabet)
+                            tehlike_skoru = (isabet * 2.5) + (isabetsiz_sut * 0.8) + (korner * 1.2)
+                            tehlike_skoru = round(tehlike_skoru, 1)
+
+                            # KELLY KRİTERİ VE RİSK DERECELENDİRMESİ
+                            if tehlike_skoru >= 22.0:
+                                sinyal_tipi = "🔥 <b>YÜKSEK DEĞERLİ BASKI (A+ Sinyal)</b>"
+                                kasa_tavsiyesi = "Kasanın %3.5 - %4'ü"
+                            else:
+                                sinyal_tipi = "⚡ <b>ORTA TEMPOLU BASKI (Standart Sinyal)</b>"
+                                kasa_tavsiyesi = "Kasanın %2'si"
+
                             sut_ok = "✅" if sut >= 10 else "❌"
                             isabet_ok = "✅" if isabet >= 4 else "❌"
                             korner_ok = "✅" if korner >= 5 else "❌"
 
                             mesaj = (
-                                f"🔥 <b>CANLI GOL SİNYALİ (60-75 dk)!</b>\n\n"
-                                f"🏆 <b>Turnuva:</b> {ulke} - {lig_adi}\n"
+                                f"{sinyal_tipi}\n\n"
+                                f"🏆 <b>Lig:</b> {ulke} - {lig_adi}\n"
                                 f"⚽ <b>Maç:</b> <b>{ev_takim}</b> {ev_gol} - {dep_gol} <b>{dep_takim}</b>\n"
                                 f"⏱ <b>Dakika:</b> {dakika}'\n\n"
-                                f"📊 <b>Baskı Verileri ({puan}/3 Şart):</b>\n"
-                                f"• Toplam Şut: <b>{sut}</b> {sut_ok} (Hedef: 10+)\n"
-                                f"• İsabetli Şut: <b>{isabet}</b> {isabet_ok} (Hedef: 4+)\n"
-                                f"• Korner: <b>{korner}</b> {korner_ok} (Hedef: 5+)\n\n"
-                                f"💡 <b>Tavsiye:</b> '1 Gol Daha' oranını değerlendirin."
+                                f"📊 <b>Canlı Veriler:</b>\n"
+                                f"• Toplam Şut: <b>{sut}</b> {sut_ok}\n"
+                                f"• İsabetli Şut: <b>{isabet}</b> {isabet_ok}\n"
+                                f"• Korner: <b>{korner}</b> {korner_ok}\n"
+                                f"🎯 <b>Tehlike İndeksi:</b> <b>{tehlike_skoru} Puan</b>\n\n"
+                                f"💰 <b>Kasa Tavsiyesi:</b> {kasa_tavsiyesi}\n"
+                                f"💡 <b>Seçenek:</b> Canlıda '1 Gol Daha' oranını değerlendirin."
                             )
 
                             telegram_mesaji_ilet(mesaj)
                             bildirilen_maclar_kumesi.add(mac_id)
-                            print(f"[BILDIRILDI] {ev_takim} vs {dep_takim}")
+                            print(f"[BILDIRILDI] {ev_takim} vs {dep_takim} | Skor: {tehlike_skoru}")
 
             except Exception as e:
                 print(f"[TEKIL MAC HATA]: {e}")
@@ -206,10 +216,10 @@ def canli_bulteni_tara():
         print(f"[GENEL TARAMA HATA]: {e}")
 
 # ==========================================
-# 6. ANA DÖNGÜ (23:55 KAPANMALI)
+# 6. ANA ZAMANLAYICI (KOTA KORUMALI & 23:55)
 # ==========================================
 def ana_calisma_dongusu():
-    telegram_mesaji_ilet("🚀 <b>Bot Hatasız Olarak Yeniden Başlatıldı!</b>\n\n• Kapanış: 23:55\n• Dakika: 60 - 75\n• Skor Farkı: <= 2\n• Kriter: Şut >= 10, İsabet >= 4, Korner >= 5 (3'te 2 Kuralı)")
+    telegram_mesaji_ilet("🚀 <b>Hibrit Analiz & Kasa Yönetim Sistemi Aktif!</b>\n\n• Dakika: 60 - 75\n• Skor Farkı: <= 2\n• 3'te 2 Kuralı + Tehlike Skoru + Kasa Oranı devrede.\n• Kapanış: 23:55")
 
     while True:
         try:
@@ -219,18 +229,18 @@ def ana_calisma_dongusu():
             hafta_sonu = anlik.weekday() >= 5
 
             calissin = False
-            bekleme = 300
+            bekleme = 300  # Standart 5 dakika (Kota koruması)
 
             if hafta_sonu:
-                # 14:00 - 23:55
+                # 14:00 - 23:55 (6 dakikada bir)
                 if (14 <= saat < 23) or (saat == 23 and dakika <= 55):
                     calissin = True
                     bekleme = 360
             else:
-                # 18:30 - 23:55
+                # 18:30 - 23:55 (5 dakikada bir -> Kotayı 100 sınırında tutar)
                 if (18 <= saat < 23 and (saat > 18 or dakika >= 30)) or (saat == 23 and dakika <= 55):
                     calissin = True
-                    bekleme = 240
+                    bekleme = 300
 
             if calissin:
                 canli_bulteni_tara()
