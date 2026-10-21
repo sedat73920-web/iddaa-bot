@@ -9,7 +9,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 # Log tamponunu kapat, Render ekranına anında düşsün
 os.environ["PYTHONUNBUFFERED"] = "1"
 
-print(">>> [SISTEM] Hafta Sonu 16:00 & Altin Denge Surumu Devrede! <<<", flush=True)
+print(">>> [SISTEM] Hafta Sonu 17:00 & Nihai Kota Kilidi Devrede! <<<", flush=True)
 
 # ==========================================
 # 1. KULLANICI & API YAPILANDIRMASI
@@ -134,7 +134,7 @@ def canli_tara():
                 tam_lig = f"{lig_ad} {ulke}".lower()
                 ulke_kucuk = ulke.lower()
 
-                # Lig filtreleri (İstatistik çekmeden önce elenir)
+                # Lig filtreleri (Gereksiz istatistik isteği atmadan elenir)
                 if any(cl in tam_lig for cl in COPE_LIGLER):
                     continue
 
@@ -186,7 +186,7 @@ def canli_tara():
                         toplam_korner = ev_s["korner"] + dep_s["korner"]
                         toplam_faul = ev_s["faul"] + dep_s["faul"]
 
-                        # DENGELİ EŞİKLER
+                        # DENGELİ EŞİKLER: En az 4 korner ve en az 5 isabet
                         if toplam_korner < 4 or toplam_isabet < 5:
                             continue
 
@@ -279,10 +279,10 @@ def canli_tara():
 def analiz_dongusu():
     time.sleep(3)
     telegram_ilet(
-        "🚀 <b>GOL AVCISI: Zirve Modu Devrede!</b>\n\n"
-        "• Hafta sonu saat 16:00 - 23:55 arasına ayarlandı.\n"
-        "• Hafta içi 18:30 - 23:55 arası aktif.\n"
-        "• Sözdizimi hatası giderildi, tarama motoru hazır."
+        "🚀 <b>GOL AVCISI: Son Ayarlar Kilitlendi!</b>\n\n"
+        "• Hafta sonu: 17:00 - 23:55 (16:00 maçlarının 60. dakikasıyla başlar).\n"
+        "• Hafta içi: 18:30 - 23:55.\n"
+        "• Altın denge filtreleri devrede, kota koruması tam."
     )
 
     while True:
@@ -296,8 +296,8 @@ def analiz_dongusu():
             bekleme = 300  # Standart 5 dakika
 
             if hafta_sonu:
-                # Cumartesi ve Pazar: 16:00 - 23:55 (Yaklaşık 8 saat = ~95 istek)
-                if (16 <= saat < 23) or (saat == 23 and dakika <= 55):
+                # Cumartesi ve Pazar: 17:00 - 23:55 (~84 istek ile maksimum kota tasarrufu)
+                if (17 <= saat < 23) or (saat == 23 and dakika <= 55):
                     calissin = True
                     bekleme = 300
             else:
