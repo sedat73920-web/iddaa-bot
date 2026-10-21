@@ -6,7 +6,7 @@ import requests
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-print(">>> [SISTEM] Kendi Kendini Uyanik Tutan Zirve Surum Devrede! <<<")
+print(">>> [SISTEM] Zirve Surum Baslatiliyor... <<<")
 
 # ==========================================
 # 1. KULLANICI & API YAPILANDIRMASI
@@ -205,20 +205,67 @@ def canli_tara():
                                 continue
 
                             tercih = "⚽ <b>1 Gol Daha Olur (Sıradaki Gol)</b>"
-                            piyasa_gerekcesi = "Sürekli hücum baskısı var, süre daraldığı için oran değerli."
-                            kasa_tavsiye = "Kasanın %2'si"
+                            piyasa_gerekcesi = "Hucum baskisi suruyor, sure daraldigi icin oran yuksek."
+                            kasa_tavsiye = "Kasanin %2'si"
 
                             if (ev_gol == 0 and dep_gol >= 1 and ev_tehlike >= 13.0) or \
                                (dep_gol == 0 and ev_gol >= 1 and dep_tehlike >= 12.0):
-                                tercih = "🔥 <b>Karşılıklı Gol Var (KG VAR)</b> veya <b>Sıradaki Gol</b>"
-                                piyasa_gerekcesi = "Geride olan takım tek kale oynuyor, beraberlik golü kapıda."
-                                kasa_tavsiye = "Kasanın %3'ü"
+                                tercih = "🔥 <b>KG VAR</b> veya <b>Siradaki Gol</b>"
+                                piyasa_gerekcesi = "Gerideki takim kaleyi abluka altina aldi."
+                                kasa_tavsiye = "Kasanin %3'u"
 
                             elif ev_gol < dep_gol and ev_tehlike >= 16.0 and fark == 1:
-                                tercih = "🛡 <b>1X Çifte Şans</b> veya <b>Ev Sahibi 1 Gol Daha</b>"
-                                piyasa_gerekcesi = "Ev sahibi sahayı yıktı, beraberliği koparacak güçte."
-                                kasa_tavsiye = "Kasanın %3.5'i"
+                                tercih = "🛡 <b>1X Cifte Sans</b> veya <b>Ev Sahibi Gol</b>"
+                                piyasa_gerekcesi = "Ev sahibi sahada ezici ustunluk kurdu."
+                                kasa_tavsiye = "Kasanin %3.5'i"
 
                             elif toplam_tehlike >= 25.0:
-                                tercih = "💣 <b>A+ SİNYAL: 1 Gol Daha Olur (Kasa Maçı)</b>"
-                                piyasa_gerekcesi = "Savunmalar çöktü, kaleciler kritik kurt
+                                tercih = "💣 <b>A+ SINYAL: 1 Gol Daha Olur</b>"
+                                piyasa_gerekcesi = "Savunmalar coktu, gol an meselesi."
+                                kasa_tavsiye = "Kasanin %4.5'i"
+
+                            ev_ad = m.get("teams", {}).get("home", {}).get("name", "Ev")
+                            dep_ad = m.get("teams", {}).get("away", {}).get("name", "Dep")
+
+                            kart_durumu = ""
+                            if kirmizi_ev or kirmizi_dep:
+                                kart_durumu = f"\n🟥 <b>Kirmizi Kart:</b> {'Ev 10 Kisi' if kirmizi_ev else 'Dep 10 Kisi'}"
+
+                            lig_etiketi = "\n⚡ <b>Gollu Lig Bonusu:</b> (+%20 Baski)" if gollu_lig_mi else ""
+
+                            mesaj = (
+                                f"👑 <b>ZIRVE COKLU PIYASA ANALIZI</b>\n\n"
+                                f"🏆 <b>Lig:</b> {ulke} - {lig_ad} {lig_etiketi}\n"
+                                f"⚽ <b>Mac:</b> <b>{ev_ad}</b> {ev_gol} - {dep_gol} <b>{dep_ad}</b>\n"
+                                f"⏱ <b>Dakika:</b> {dakika}' {kart_durumu}\n\n"
+                                f"📊 <b>Baski Verileri:</b>\n"
+                                f"• Ev: {ev_s['sut']} Sut ({ev_s['isabet']} Isabet) / {ev_s['korner']} Korner\n"
+                                f"• Dep: {dep_s['sut']} Sut ({dep_s['isabet']} Isabet) / {dep_s['korner']} Korner\n"
+                                f"🧤 <b>Kurtarislar:</b> Ev: {ev_s['kurtaris']} | Dep: {dep_s['kurtaris']}\n"
+                                f"🎯 <b>Tehlike Indeksi:</b> <b>{toplam_tehlike} Puan</b>\n"
+                                f"📈 <b>Sut Hassasiyeti:</b> %{int(isabet_orani*100)}\n\n"
+                                f"💡 <b>ONERILEN TERCIH:</b>\n{tercih}\n"
+                                f"📌 <i>Gerekce: {piyasa_gerekcesi}</i>\n\n"
+                                f"💰 <b>Kelly Kasa Girisi:</b> {kasa_tavsiye}"
+                            )
+
+                            telegram_ilet(mesaj)
+                            bildirilen_maclar.add(mac_id)
+                            print(f"[BILDIRILDI] {ev_ad} vs {dep_ad} | Skor: {toplam_tehlike}")
+
+            except Exception as tekil_e:
+                print(f"[MAC HATA]: {tekil_e}")
+
+        print(f"[TARAMA BITTI] Canli: {len(maclar)} | Kalan Kota: {kalan_kota}")
+
+    except Exception as genel_e:
+        print(f"[TARAMA GENEL HATA]: {genel_e}")
+
+# ==========================================
+# 5. DÖNGÜ & GÜVENLİK
+# ==========================================
+def analiz_dongusu():
+    time.sleep(3)
+    telegram_ilet("👑 <b>Zirve Karar Motoru & Kesintisiz Uyku Savar Aktif!</b>\n\n• Render uyku modu engellendi.\n• Canli maclar taranmaya baslandi.\n• Kapanis: 23:55")
+
+    while True
