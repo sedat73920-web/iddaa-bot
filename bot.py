@@ -268,4 +268,73 @@ def analiz_dongusu():
     time.sleep(3)
     telegram_ilet("👑 <b>Zirve Karar Motoru & Kesintisiz Uyku Savar Aktif!</b>\n\n• Render uyku modu engellendi.\n• Canli maclar taranmaya baslandi.\n• Kapanis: 23:55")
 
-    while True
+    while True:
+        try:
+            anlik = datetime.now(TURKIYE_SAATI)
+            saat = anlik.hour
+            dakika = anlik.minute
+            hafta_sonu = anlik.weekday() >= 5
+
+            calissin = False
+            bekleme = 300
+
+            if hafta_sonu:
+                if (14 <= saat < 23) or (saat == 23 and dakika <= 55):
+                    calissin = True
+                    bekleme = 420
+            else:
+                if (18 <= saat < 23 and (saat > 18 or dakika >= 30)) or (saat == 23 and dakika <= 55):
+                    calissin = True
+                    bekleme = 300
+
+            if calissin:
+                canli_tara()
+                time.sleep(bekleme)
+            else:
+                print(f"[BEKLEME] Mac saatleri disi ({saat:02d}:{dakika:02d}). 10 dk uyku...")
+                time.sleep(600)
+
+        except Exception as e:
+            print(f"[DÖNGÜ HATA]: {e}")
+            time.sleep(30)
+
+# ==========================================
+# 6. UYKU ENGELLEYİCİ (SELF-PING NÖBETÇİSİ)
+# ==========================================
+def uyku_savar_dongusu():
+    time.sleep(30)
+    sunucu_url = "https://iddaa-bot-05vw.onrender.com"
+    while True:
+        try:
+            r = requests.get(sunucu_url, timeout=10)
+            print(f"[NOBETCI] Ping basarili. Kod: {r.status_code}")
+        except Exception as e:
+            print(f"[NOBETCI UYARI]: Ping atilamadi ({e})")
+        time.sleep(600)
+
+# ==========================================
+# 7. RENDER WEBSERVER
+# ==========================================
+class RenderHealthServer(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"Bot Aktif!")
+
+    def log_message(self, format, *args):
+        return
+
+def web_sunucu_baslat():
+    try:
+        port = int(os.environ.get("PORT", 8080))
+        sunucu = HTTPServer(("0.0.0.0", port), RenderHealthServer)
+        print(f"[WEB] Port {port} kilitlendi.")
+        sunucu.serve_forever()
+    except Exception as e:
+        print(f"[WEB HATA]: {e}")
+
+threading.Thread(target=web_sunucu_baslat, daemon=True).start()
+threading.Thread(target=uyku_savar_dongusu, daemon=True).start()
+
+analiz_dongusu()
