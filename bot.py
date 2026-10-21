@@ -6,7 +6,7 @@ import requests
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-print(">>> [TEST 1] bot.py baslatildi! <<<")
+print(">>> [SISTEM] Nihai Zirve Surum Baslatiliyor... <<<")
 
 # ==========================================
 # 1. KULLANICI & API YAPILANDIRMASI
@@ -24,177 +24,262 @@ API_HEADERS = {
 }
 
 TURKIYE_SAATI = timezone(timedelta(hours=3))
-bildirilen_maclar_kumesi = set()
-aktif_sifirlama_gunu = datetime.now(TURKIYE_SAATI).day
+bildirilen_maclar = set()
+aktif_gun = datetime.now(TURKIYE_SAATI).day
+
+# LİG MATRİSLERİ
+GOLLU_LIGLER = [
+    "eredivisie", "eerste divisie", "bundesliga", "eliteserien", 
+    "allsvenskan", "super league", "pro league", "premier league", 
+    "championship", "bundesliga 2", "super lig"
+]
+
+KISIR_LIGLER = [
+    "serie c", "primera b", "segunda b", "super league 2", 
+    "botola", "girabola", "national", "ligue 2"
+]
+
+# KOTA ÇÖP EDİCİLERİ (İstatistik sorgusu atılmayacak)
+COPE_LIGLER = ["u19", "u20", "u21", "women", "kadınlar", "amateur", "reserve"]
 
 # ==========================================
 # 2. TELEGRAM MESAJ SERVİSİ
 # ==========================================
-def telegram_mesaji_ilet(icerik):
+def telegram_ilet(mesaj):
     try:
-        print(f"[TELEGRAM] Mesaj gonderilmeye calisiliyor...")
-        hedef_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        istek_paketi = {
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {
             "chat_id": TELEGRAM_CHAT_ID,
-            "text": icerik,
+            "text": mesaj,
             "parse_mode": "HTML",
             "disable_web_page_preview": True
         }
-        yanit = requests.post(hedef_url, json=istek_paketi, timeout=10)
-        print(f"[TELEGRAM YANIT] Kod: {yanit.status_code} | Yanit: {yanit.text}")
+        res = requests.post(url, json=payload, timeout=12)
+        if res.status_code != 200:
+            print(f"[TELEGRAM HATA] Kod: {res.status_code}")
     except Exception as e:
-        print(f"[TELEGRAM KRITIK HATA]: {e}")
+        print(f"[TELEGRAM AG HATA]: {e}")
 
 # ==========================================
 # 3. İSTATİSTİK AYRIŞTIRICI
 # ==========================================
-def istatistik_verilerini_cozumle(gelen_veri):
-    toplam_sut = 0
-    isabetli_sut = 0
-    korner = 0
+def derin_istatistik_coz(gelen_veri):
+    ev_stat = {"sut": 0, "isabet": 0, "korner": 0, "kurtaris": 0, "faul": 0}
+    dep_stat = {"sut": 0, "isabet": 0, "korner": 0, "kurtaris": 0, "faul": 0}
 
     if not gelen_veri or "response" not in gelen_veri:
-        return 0, 0, 0
+        return ev_stat, dep_stat
 
-    takim_listesi = gelen_veri.get("response", [])
-    if not isinstance(takim_listesi, list):
-        return 0, 0, 0
+    takimlar = gelen_veri.get("response", [])
+    if not isinstance(takimlar, list) or len(takimlar) < 2:
+        return ev_stat, dep_stat
 
-    for takim in takim_listesi:
-        istatistikler = takim.get("statistics", [])
-        if not isinstance(istatistikler, list):
-            continue
+    def parse_stats(stat_list):
+        s, i, k, kurt, f = 0, 0, 0, 0, 0
+        for item in stat_list:
+            tip = str(item.get("type", "")).strip().lower()
+            val = item.get("value")
+            sayi = int(str(val).strip()) if (val is not None and str(val).strip().isdigit()) else 0
+            if "total shots" in tip: s = sayi
+            elif "shots on goal" in tip: i = sayi
+            elif "corner" in tip: k = sayi
+            elif "goalkeeper saves" in tip: kurt = sayi
+            elif "fouls" in tip: f = sayi
+        return {"sut": s, "isabet": i, "korner": k, "kurtaris": kurt, "faul": f}
 
-        for kalem in istatistikler:
-            tip = str(kalem.get("type", "")).strip().lower()
-            deger = kalem.get("value")
+    ev_stat = parse_stats(takimlar[0].get("statistics", []))
+    dep_stat = parse_stats(takimlar[1].get("statistics", []))
 
-            sayisal = 0
-            if deger is not None:
-                metin = str(deger).strip()
-                if metin.isdigit():
-                    sayisal = int(metin)
-
-            if "total shots" in tip:
-                toplam_sut += sayisal
-            elif "shots on goal" in tip:
-                isabetli_sut += sayisal
-            elif "corner" in tip:
-                korner += sayisal
-
-    return toplam_sut, isabetli_sut, korner
+    return ev_stat, dep_stat
 
 # ==========================================
-# 4. CANLI MAÇ TARAMA MOTORU
+# 4. KOTA KORUMALI CANLI TARAMA MOTORU
 # ==========================================
-def canli_bulteni_tara():
-    global bildirilen_maclar_kumesi, aktif_sifirlama_gunu
+def canli_tara():
+    global bildirilen_maclar, aktif_gun
 
     bugun = datetime.now(TURKIYE_SAATI).day
-    if bugun != aktif_sifirlama_gunu:
-        bildirilen_maclar_kumesi.clear()
-        aktif_sifirlama_gunu = bugun
-        print("[HAFIZA] Yeni gun, liste temizlendi.")
+    if bugun != aktif_gun:
+        bildirilen_maclar.clear()
+        aktif_gun = bugun
+        print("[HAFIZA] Yeni gun, bildirim havuzu temizlendi.")
 
     try:
-        canli_istek = requests.get(API_LIVE_URL, headers=API_HEADERS, timeout=15)
-        kalan_kota = canli_istek.headers.get("x-ratelimit-requests-remaining", "Bilinmiyor")
+        res = requests.get(API_LIVE_URL, headers=API_HEADERS, timeout=15)
+        kalan_kota = res.headers.get("x-ratelimit-requests-remaining", "Bilinmiyor")
 
-        if canli_istek.status_code != 200:
-            print(f"[API HATASI] Kod: {canli_istek.status_code}")
+        if res.status_code != 200:
             return
 
-        ana_veri = canli_istek.json()
-        maclar = ana_veri.get("response", [])
-
+        data = res.json()
+        maclar = data.get("response", [])
         if not maclar:
-            print(f"[TARAMA] Canli mac yok. Kalan Kota: {kalan_kota}")
             return
 
-        for mac in maclar:
+        for m in maclar:
             try:
-                fikstur = mac.get("fixture", {})
-                mac_id = fikstur.get("id")
-                durum = fikstur.get("status", {})
-                dakika = durum.get("elapsed")
-
-                lig = mac.get("league", {})
-                lig_adi = lig.get("name", "Bilinmeyen Lig")
-                ulke = lig.get("country", "")
+                fixture = m.get("fixture", {})
+                mac_id = fixture.get("id")
+                status = fixture.get("status", {})
+                dakika = status.get("elapsed")
 
                 if not dakika:
                     continue
 
-                skor = mac.get("goals", {})
-                ev_gol = skor.get("home") if skor.get("home") is not None else 0
-                dep_gol = skor.get("away") if skor.get("away") is not None else 0
+                league = m.get("league", {})
+                lig_ad = league.get("name", "Lig")
+                ulke = league.get("country", "")
+                tam_lig = f"{lig_ad} {ulke}".lower()
+
+                # ÖN ELEME: Çöp ligleri istatistik çekmeden ele (Kota koruması)
+                if any(cl in tam_lig for cl in COPE_LIGLER):
+                    continue
+
+                goals = m.get("goals", {})
+                ev_gol = goals.get("home") if goals.get("home") is not None else 0
+                dep_gol = goals.get("away") if goals.get("away") is not None else 0
                 fark = abs(ev_gol - dep_gol)
 
+                # ŞART 1: Dakika 60 - 75 & Skor Farkı <= 2
                 if 60 <= dakika <= 75 and fark <= 2:
-                    if mac_id in bildirilen_maclar_kumesi:
+                    if mac_id in bildirilen_maclar:
                         continue
 
-                    ev_takim = mac.get("teams", {}).get("home", {}).get("name", "Ev")
-                    dep_takim = mac.get("teams", {}).get("away", {}).get("name", "Dep")
+                    gollu_lig_mi = any(gl in tam_lig for gl in GOLLU_LIGLER)
+                    kisir_lig_mi = any(kl in tam_lig for kl in KISIR_LIGLER)
 
-                    stat_istek = requests.get(f"{API_STATS_URL}?fixture={mac_id}", headers=API_HEADERS, timeout=12)
-
-                    if stat_istek.status_code == 200:
-                        sut, isabet, korner = istatistik_verilerini_cozumle(stat_istek.json())
-
-                        puan = 0
-                        if sut >= 10: puan += 1
-                        if isabet >= 4: puan += 1
-                        if korner >= 5: puan += 1
-
-                        if puan >= 2:
-                            isabetsiz_sut = max(0, sut - isabet)
-                            tehlike_skoru = (isabet * 2.5) + (isabetsiz_sut * 0.8) + (korner * 1.2)
-                            tehlike_skoru = round(tehlike_skoru, 1)
-
-                            if tehlike_skoru >= 22.0:
-                                sinyal_tipi = "🔥 <b>YÜKSEK DEĞERLİ BASKI (A+ Sinyal)</b>"
-                                kasa_tavsiyesi = "Kasanın %3.5 - %4'ü"
+                    # Kırmızı Kart ve Son Dakika Gol Kontrolü
+                    kirmizi_ev, kirmizi_dep = False, False
+                    son_gol_dakikasi = 0
+                    for ev in m.get("events", []):
+                        ev_tip = ev.get("type", "").lower()
+                        ev_detay = ev.get("detail", "").lower()
+                        if ev_tip == "card" and ev_detay == "red card":
+                            takim_id = ev.get("team", {}).get("id")
+                            if takim_id == m.get("teams", {}).get("home", {}).get("id"):
+                                kirmizi_ev = True
                             else:
-                                sinyal_tipi = "⚡ <b>ORTA TEMPOLU BASKI (Standart Sinyal)</b>"
-                                kasa_tavsiyesi = "Kasanın %2'si"
+                                kirmizi_dep = True
+                        elif ev_tip == "goal":
+                            g_dak = ev.get("time", {}).get("elapsed", 0)
+                            if g_dak > son_gol_dakikasi:
+                                son_gol_dakikasi = g_dak
 
-                            sut_ok = "✅" if sut >= 10 else "❌"
-                            isabet_ok = "✅" if isabet >= 4 else "❌"
-                            korner_ok = "✅" if korner >= 5 else "❌"
+                    # Son 4 dakikada gol olmuşsa oyunun soğumasını bekle
+                    if dakika - son_gol_dakikasi < 4:
+                        continue
+
+                    # İSTATİSTİK SORGUSU (Sadece süzgeçten geçen elit maçlara atılır)
+                    stat_res = requests.get(f"{API_STATS_URL}?fixture={mac_id}", headers=API_HEADERS, timeout=12)
+                    if stat_res.status_code == 200:
+                        ev_s, dep_s = derin_istatistik_coz(stat_res.json())
+
+                        toplam_sut = ev_s["sut"] + dep_s["sut"]
+                        toplam_isabet = ev_s["isabet"] + dep_s["isabet"]
+                        toplam_korner = ev_s["korner"] + dep_s["korner"]
+                        toplam_faul = ev_s["faul"] + dep_s["faul"]
+
+                        # Oyun durmuşsa maçı ele
+                        if toplam_faul >= 24:
+                            continue
+
+                        # 3'te 2 Kuralı
+                        kriter = 0
+                        if toplam_sut >= 10: kriter += 1
+                        if toplam_isabet >= 4: kriter += 1
+                        if toplam_korner >= 5: kriter += 1
+
+                        if kriter >= 2:
+                            sut_hizi = toplam_sut / dakika
+                            isabet_orani = (toplam_isabet / toplam_sut) if toplam_sut > 0 else 0
+
+                            # Sönük tempo ve dağa taşa vuruş engeli
+                            if sut_hizi < 0.16 or isabet_orani < 0.28:
+                                continue
+
+                            # TEHLİKE HESABI & KALECİ KURTARIŞLARI
+                            ev_tehlike = (ev_s["isabet"] * 2.5) + ((ev_s["sut"] - ev_s["isabet"]) * 0.8) + (ev_s["korner"] * 1.2) + (dep_s["kurtaris"] * 1.5)
+                            dep_tehlike = (dep_s["isabet"] * 2.5) + ((dep_s["sut"] - dep_s["isabet"]) * 0.8) + (dep_s["korner"] * 1.2) + (ev_s["kurtaris"] * 1.5)
+
+                            ev_tehlike *= 1.15
+                            if kirmizi_dep: ev_tehlike *= 1.25
+                            if kirmizi_ev: dep_tehlike *= 1.20
+
+                            toplam_tehlike = ev_tehlike + dep_tehlike
+
+                            # GOLLÜ LİG BONUSU (+%20 Çarpan)
+                            if gollu_lig_mi:
+                                toplam_tehlike *= 1.20
+
+                            toplam_tehlike = round(toplam_tehlike, 1)
+
+                            if kisir_lig_mi and toplam_tehlike < 25.0:
+                                continue
+
+                            # PİYASA TERCİHİ
+                            tercih = "⚽ <b>1 Gol Daha Olur (Sıradaki Gol)</b>"
+                            piyasa_gerekcesi = "Sürekli hücum baskısı var, süre daraldığı için oran değerli."
+                            kasa_tavsiye = "Kasanın %2'si"
+
+                            if (ev_gol == 0 and dep_gol >= 1 and ev_tehlike >= 13.0) or \
+                               (dep_gol == 0 and ev_gol >= 1 and dep_tehlike >= 12.0):
+                                tercih = "🔥 <b>Karşılıklı Gol Var (KG VAR)</b> veya <b>Sıradaki Gol</b>"
+                                piyasa_gerekcesi = "Geride olan takım tek kale oynuyor, beraberlik golü kapıda."
+                                kasa_tavsiye = "Kasanın %3'ü"
+
+                            elif ev_gol < dep_gol and ev_tehlike >= 16.0 and fark == 1:
+                                tercih = "🛡 <b>1X Çifte Şans</b> veya <b>Ev Sahibi 1 Gol Daha</b>"
+                                piyasa_gerekcesi = "Ev sahibi sahayı yıktı, beraberliği koparacak güçte."
+                                kasa_tavsiye = "Kasanın %3.5'i"
+
+                            elif toplam_tehlike >= 25.0:
+                                tercih = "💣 <b>A+ SİNYAL: 1 Gol Daha Olur (Kasa Maçı)</b>"
+                                piyasa_gerekcesi = "Savunmalar çöktü, kaleciler kritik kurtarışlarla zor duruyor, gol kapıda."
+                                kasa_tavsiye = "Kasanın %4.5'i"
+
+                            ev_ad = m.get("teams", {}).get("home", {}).get("name", "Ev")
+                            dep_ad = m.get("teams", {}).get("away", {}).get("name", "Dep")
+
+                            kart_durumu = ""
+                            if kirmizi_ev or kirmizi_dep:
+                                kart_durumu = f"\n🟥 <b>Kırmızı Kart:</b> {'Ev Sahibi 10 Kişi' if kirmizi_ev else 'Deplasman 10 Kişi'}"
+
+                            lig_etiketi = "\n⚡ <b>Gollü Lig Bonusu:</b> Açık Futbol Ligi (+%20 Baskı)" if gollu_lig_mi else ""
 
                             mesaj = (
-                                f"{sinyal_tipi}\n\n"
-                                f"🏆 <b>Lig:</b> {ulke} - {lig_adi}\n"
-                                f"⚽ <b>Maç:</b> <b>{ev_takim}</b> {ev_gol} - {dep_gol} <b>{dep_takim}</b>\n"
-                                f"⏱ <b>Dakika:</b> {dakika}'\n\n"
-                                f"📊 <b>Canlı Veriler:</b>\n"
-                                f"• Toplam Şut: <b>{sut}</b> {sut_ok}\n"
-                                f"• İsabetli Şut: <b>{isabet}</b> {isabet_ok}\n"
-                                f"• Korner: <b>{korner}</b> {korner_ok}\n"
-                                f"🎯 <b>Tehlike İndeksi:</b> <b>{tehlike_skoru} Puan</b>\n\n"
-                                f"💰 <b>Kasa Tavsiyesi:</b> {kasa_tavsiyesi}\n"
-                                f"💡 <b>Seçenek:</b> Canlıda '1 Gol Daha' oranını değerlendirin."
+                                f"👑 <b>ZİRVE ÇOKLU PİYASA ANALİZİ</b>\n\n"
+                                f"🏆 <b>Lig:</b> {ulke} - {lig_ad} {lig_etiketi}\n"
+                                f"⚽ <b>Maç:</b> <b>{ev_ad}</b> {ev_gol} - {dep_gol} <b>{dep_ad}</b>\n"
+                                f"⏱ <b>Dakika:</b> {dakika}' {kart_durumu}\n\n"
+                                f"📊 <b>Baskı & Kaleci Verileri:</b>\n"
+                                f"• Ev Sahibi Şut / Korner: {ev_s['sut']} ({ev_s['isabet']} isabet) / {ev_s['korner']} korner\n"
+                                f"• Deplasman Şut / Korner: {dep_s['sut']} ({dep_s['isabet']} isabet) / {dep_s['korner']} korner\n"
+                                f"🧤 <b>Kurtarışlar:</b> Ev: {ev_s['kurtaris']} | Dep: {dep_s['kurtaris']}\n"
+                                f"🎯 <b>Tehlike İndeksi:</b> <b>{toplam_tehlike} Puan</b>\n"
+                                f"📈 <b>Şut Hassasiyeti:</b> %{int(isabet_orani*100)}\n\n"
+                                f"💡 <b>EN MANTIKLI PİYASA TERCİHİ:</b>\n{tercih}\n"
+                                f"📌 <i>Gerekçe: {piyasa_gerekcesi}</i>\n\n"
+                                f"💰 <b>Kelly Kasa Girişi:</b> {kasa_tavsiye}"
                             )
 
-                            telegram_mesaji_ilet(mesaj)
-                            bildirilen_maclar_kumesi.add(mac_id)
-                            print(f"[BILDIRILDI] {ev_takim} vs {dep_takim}")
+                            telegram_ilet(mesaj)
+                            bildirilen_maclar.add(mac_id)
+                            print(f"[BILDIRILDI] {ev_ad} vs {dep_ad} | Skor: {toplam_tehlike}")
 
-            except Exception as e:
-                print(f"[TEKIL MAC HATA]: {e}")
+            except Exception as tekil_e:
+                print(f"[MAC HATA]: {tekil_e}")
 
-        print(f"[OZET] Canli Toplam: {len(maclar)} | Kalan Kota: {kalan_kota}")
+        print(f"[TARAMA BITTI] Canli: {len(maclar)} | Kalan Kota: {kalan_kota}")
 
-    except Exception as e:
-        print(f"[GENEL TARAMA HATA]: {e}")
+    except Exception as genel_e:
+        print(f"[TARAMA GENEL HATA]: {genel_e}")
 
 # ==========================================
-# 5. ARKA PLAN DÖNGÜSÜ
+# 5. DÖNGÜ & GÜVENLİK
 # ==========================================
 def analiz_dongusu():
-    print(">>> [TEST 2] analiz_dongusu thread'i basladi! Telegram mesaji atiliyor... <<<")
-    telegram_mesaji_ilet("🚀 <b>Hibrit Analiz Sistemi Devrede!</b>\n\nSistem Render uzerinde aktif, maclar taranmaya baslandi.")
+    time.sleep(3)
+    telegram_ilet("👑 <b>Zirve Karar Motoru & Gollü Ligler Modeli Devrede!</b>\n\n• Hafta sonu kota korumalı ön eleme aktif.\n• Gollü liglere +%20 bonus devrede.\n• Kapanış: 23:55")
 
     while True:
         try:
@@ -207,16 +292,18 @@ def analiz_dongusu():
             bekleme = 300
 
             if hafta_sonu:
+                # 14:00 - 23:55 (Hafta sonu 7 dk periyot -> Kota garantisi)
                 if (14 <= saat < 23) or (saat == 23 and dakika <= 55):
                     calissin = True
-                    bekleme = 360
+                    bekleme = 420
             else:
+                # 18:30 - 23:55 (Hafta içi 5 dk periyot)
                 if (18 <= saat < 23 and (saat > 18 or dakika >= 30)) or (saat == 23 and dakika <= 55):
                     calissin = True
                     bekleme = 300
 
             if calissin:
-                canli_bulteni_tara()
+                canli_tara()
                 time.sleep(bekleme)
             else:
                 print(f"[BEKLEME] Mac saatleri disi ({saat:02d}:{dakika:02d}). 10 dk uyku...")
@@ -227,31 +314,26 @@ def analiz_dongusu():
             time.sleep(30)
 
 # ==========================================
-# 6. RENDER UYKU ÖNLEYİCİ WEBSERVER
+# 6. RENDER WEBSERVER
 # ==========================================
 class RenderHealthServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Bot Calisiyor.")
+        self.wfile.write(b"Zirve Bot Calisiyor.")
 
     def log_message(self, format, *args):
         return
 
-def web_sunucu_calistir():
+def web_sunucu_baslat():
     try:
         port = int(os.environ.get("PORT", 8080))
-        print(f">>> [TEST 3] Web sunucusu {port} portunda baslatiliyor... <<<")
         sunucu = HTTPServer(("0.0.0.0", port), RenderHealthServer)
-        print(f">>> [TEST 4] Web sunucusu basariyla dinliyor! <<<")
+        print(f"[WEB] Port {port} kilitlendi.")
         sunucu.serve_forever()
     except Exception as e:
-        print(f"[WEB SUNUCU HATA]: {e}")
+        print(f"[WEB HATA]: {e}")
 
-# Threadleri baslat
-t_web = threading.Thread(target=web_sunucu_calistir, daemon=True)
-t_web.start()
-
-# Ana programı canlı tut
+threading.Thread(target=web_sunucu_baslat, daemon=True).start()
 analiz_dongusu()
