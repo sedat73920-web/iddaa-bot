@@ -1,252 +1,130 @@
 import os
-import sys
 import time
-import threading
 import requests
-from datetime import datetime, timezone, timedelta
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from datetime import datetime, time as dt_time
 
-os.environ["PYTHONUNBUFFERED"] = "1"
+# --- AYARLAR VE YAPILANDIRMA ---
+API_KEY = "9009059246:AAHcZwhdQqwl6qkI28LeM_1hQLxpwsc41wU"  # Telegram Bot Token / API Anahtarı
+BASE_URL = "https://api.example.com/v1"  # API servis adresiniz
+WHITE_LIST = ["Süper Lig", "Premier League", "La Liga", "Serie A", "Bundesliga"]  # Beyaz liste ligler
 
-print(">>> [SISTEM] Sedat43 Ultra Kota Dostu Mod Aktif <<<", flush=True)
+# İstek sayacı ve sıfırlama takibi için değişkenler
+request_count = 0
+last_reset_time = time.time()
 
-TELEGRAM_BOT_TOKEN = "9009059246:AAHcZwhdQqwl6qkI28LeM_1hQLxpwsc41wU"
-TELEGRAM_CHAT_ID = "769164600"
-FOOTBALL_API_KEY = "d940a36cc7b3b1f03bd41b8880721772"
+def check_daily_limit():
+    global request_count, last_reset_time
+    current_time = time.time()
+    
+    # 24 saatte bir sayacı sıfırla (86400 saniye = 24 saat)
+    if current_time - last_reset_time >= 86400:
+        request_count = 0
+        last_reset_time = current_time
 
-API_LIVE_URL = "https://v3.football.api-sports.io/fixtures?live=all"
-API_STATS_URL = "https://v3.football.api-sports.io/fixtures/statistics"
+    if request_count >= 100:
+        print("Günlük 100 istek sınırına ulaşıldı. Kota yenilenene kadar bekleniyor...")
+        return False
+    return True
 
-API_HEADERS = {
-    "x-rapidapi-host": "v3.football.api-sports.io",
-    "x-rapidapi-key": FOOTBALL_API_KEY
-}
-
-GOL_GIF_URL = "https://media.giphy.com/media/unQ3IJU2RG7DO/giphy.gif"
-
-TURKIYE_SAATI = timezone(timedelta(hours=3))
-bildirilen_maclar = set()
-aktif_gun = datetime.now(TURKIYE_SAATI).day
-
-BEYAZ_LIGLER = [
-    "premier league", "championship", "league one",
-    "bundesliga", "2. bundesliga",
-    "la liga", "segunda division",
-    "serie a", "serie b",
-    "ligue 1", "ligue 2",
-    "eredivisie", "primeira liga",
-    "süper lig", "1. lig",
-    "pro league", "superliga", "super league",
-    "champions league", "europa league", "conference league",
-    "women's super league", "nwsl", "uefa women's champions league"
-]
-
-def telegram_ilet(mesaj, gif_gonder=False):
+def api_request(endpoint, params=None):
+    global request_count
+    if not check_daily_limit():
+        return None
+        
+    url = f"{BASE_URL}/{endpoint}"
+    headers = {"Authorization": f"Bearer {API_KEY}"}
+    
     try:
-        url_msg = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload_msg = {
-            "chat_id": TELEGRAM_CHAT_ID,
-            "text": mesaj,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True
-        }
-        requests.post(url_msg, json=payload_msg, timeout=12)
+        response = requests.get(url, headers=headers, params=params)
+        request_count += 1
+        print(f"API İsteği Yapıldı. Günlük Toplam İstek: {request_count}/100")
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"API Hatası: {response.status_code}")
+            return None
     except Exception as e:
-        print(f"[TELEGRAM MESAJ HATA]: {e}", flush=True)
+        print(f"Bağlantı Hatası: {e}")
+        return None
 
-    if gif_gonder:
-        try:
-            url_gif = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendAnimation"
-            payload_gif = {
-                "chat_id": TELEGRAM_CHAT_ID,
-                "animation": GOL_GIF_URL
-            }
-            requests.post(url_gif, json=payload_gif, timeout=10)
-        except Exception as e:
-            print(f"[TELEGRAM GIF HATA]: {e}", flush=True)
-
-def derin_istatistik_coz(gelen_veri):
-    ev_stat = {"sut": 0, "isabet": 0, "korner": 0, "kurtaris": 0}
-    dep_stat = {"sut": 0, "isabet": 0, "korner": 0, "kurtaris": 0}
-
-    if not gelen_veri or "response" not in gelen_veri:
-        return ev_stat, dep_stat
-
-    takimlar = gelen_veri.get("response", [])
-    if not isinstance(takimlar, list) or len(takimlar) < 2:
-        return ev_stat, dep_stat
-
-    def parse_stats(stat_list):
-        s, i, k, kurt = 0, 0, 0, 0
-        for item in stat_list:
-            tip = str(item.get("type", "")).strip().lower()
-            val = item.get("value")
-            sayi = int(str(val).strip()) if (val is not None and str(val).strip().isdigit()) else 0
-            if "total shots" in tip: s = sayi
-            elif "shots on goal" in tip: i = sayi
-            elif "corner" in tip: k = sayi
-            elif "goalkeeper saves" in tip: kurt = sayi
-        return {"sut": s, "isabet": i, "korner": k, "kurtaris": kurt}
-
-    ev_stat = parse_stats(takimlar[0].get("statistics", []))
-    dep_stat = parse_stats(takimlar[1].get("statistics", []))
-    return ev_stat, dep_stat
-
-def canli_tara():
-    global bildirilen_maclar, aktif_gun
-
-    bugun = datetime.now(TURKIYE_SAATI).day
-    if bugun != aktif_gun:
-        bildirilen_maclar.clear()
-        aktif_gun = bugun
-        print("[HAFIZA] Yeni gün başladı, sinyal hafızası sıfırlandı.", flush=True)
-
+def send_telegram_message(message):
+    bot_token = "9009059246:AAHcZwhdQqwl6qkI28LeM_1hQLxpwsc41wU"
+    chat_id = "TELEGRAM_CHAT_ID"
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
+    
     try:
-        res = requests.get(API_LIVE_URL, headers=API_HEADERS, timeout=15)
-        kalan_kota = res.headers.get("x-ratelimit-requests-remaining", "Bilinmiyor")
+        requests.post(url, json=payload)
+    except Exception as e:
+        print(f"Telegram Gönderim Hatası: {e}")
 
-        if res.status_code != 200:
-            return
+def is_within_working_hours():
+    """Çalışma saatlerini kontrol eder: 13:00 ile 00:30 arası"""
+    now = datetime.now().time()
+    start_time = dt_time(13, 0)
+    end_time = dt_time(0, 30)
+    
+    # Saat 13:00 ile 23:59 arası VEYA 00:00 ile 00:30 arası durumunu kontrol eder
+    if start_time <= now or now <= end_time:
+        return True
+    return False
 
-        data = res.json()
-        maclar = data.get("response", [])
-        print(f"[TARAMA] Canlı: {len(maclar)} Maç | Kalan Kota: {kalan_kota}", flush=True)
-
-        for m in maclar:
-            try:
-                fixture = m.get("fixture", {})
-                mac_id = fixture.get("id")
-                status = fixture.get("status", {})
-                dakika = status.get("elapsed")
-
-                if not dakika:
-                    continue
-
-                league = m.get("league", {})
-                lig_ad = str(league.get("name", "")).lower()
-                ulke = str(league.get("country", "")).lower()
-
-                if not any(bl in lig_ad for bl in BEYAZ_LIGLER):
-                    continue
-
-                goals = m.get("goals", {})
-                ev_gol = goals.get("home") if goals.get("home") is not None else 0
-                dep_gol = goals.get("away") if goals.get("away") is not None else 0
-                toplam_gol = ev_gol + dep_gol
-                fark = abs(ev_gol - dep_gol)
-
-                ikinci_yari_uygun = (60 <= dakika <= 78 and fark <= 2 and f"{mac_id}_IY2" not in bildirilen_maclar)
-                ilk_yari_uygun = (25 <= dakika <= 39 and fark <= 2 and toplam_gol <= 3 and f"{mac_id}_IY1" not in bildirilen_maclar)
-
-                if not (ikinci_yari_uygun or ilk_yari_uygun):
-                    continue
-
-                stat_res = requests.get(f"{API_STATS_URL}?fixture={mac_id}", headers=API_HEADERS, timeout=12)
-                if stat_res.status_code != 200:
-                    continue
-
-                ev_s, dep_s = derin_istatistik_coz(stat_res.json())
-                toplam_sut = ev_s["sut"] + dep_s["sut"]
-                toplam_isabet = ev_s["isabet"] + dep_s["isabet"]
-                toplam_korner = ev_s["korner"] + dep_s["korner"]
-
-                ev_ad = m.get("teams", {}).get("home", {}).get("name", "Ev")
-                dep_ad = m.get("teams", {}).get("away", {}).get("name", "Dep")
-
-                if ikinci_yari_uygun:
-                    if toplam_korner >= 4 and toplam_isabet >= 5:
-                        isabet_orani = (toplam_isabet / toplam_sut) if toplam_sut > 0 else 0
-                        if isabet_orani >= 0.28:
-                            ev_tehlike = (ev_s["isabet"] * 2.3) + ((ev_s["sut"] - ev_s["isabet"]) * 0.7) + (ev_s["korner"] * 1.1) + (dep_s["kurtaris"] * 1.5)
-                            dep_tehlike = (dep_s["isabet"] * 2.3) + ((dep_s["sut"] - dep_s["isabet"]) * 0.7) + (dep_s["korner"] * 1.1) + (ev_s["kurtaris"] * 1.5)
-                            toplam_tehlike = round((ev_tehlike * 1.12) + dep_tehlike, 1)
-
-                            if toplam_tehlike >= 24.0:
-                                bildiri = (
-                                    f"🔥 <b>SEDAT43 - İKİNCİ YARI GOL AVCISI</b>\n\n"
-                                    f"🏆 <b>Lig:</b> {league.get('country')} - {league.get('name')}\n"
-                                    f"⚽ <b>Maç:</b> {ev_ad} <b>{ev_gol} - {dep_gol}</b> {dep_ad}\n"
-                                    f"⏱ <b>Dakika:</b> {dakika}'\n\n"
-                                    f"📊 <b>Baskı Verisi:</b>\n"
-                                    f"• Toplam Şut: {toplam_sut} | İsabet: {toplam_isabet} | Korner: {toplam_korner}\n"
-                                    f"🎯 <b>Tehlike İndeksi:</b> <b>{toplam_tehlike} Puan</b>\n\n"
-                                    f"💡 <b>TERCİH:</b> ⚽ <b>1 Gol Daha Olur (Sıradaki Gol)</b>\n"
-                                    f"💰 <b>Kasa Girişi:</b> Kasanın %2.5'i"
-                                )
-                                telegram_ilet(bildiri, gif_gonder=True)
-                                bildirilen_maclar.add(f"{mac_id}_IY2")
-                                print(f"[BİLDİRİLDİ - İY2] {ev_ad} vs {dep_ad}", flush=True)
-
-                elif ilk_yari_uygun:
-                    if toplam_sut >= 5 and toplam_isabet >= 2 and toplam_korner >= 2:
-                        hedef_ust = toplam_gol + 0.5
-                        bildiri = (
-                            f"⚡ <b>SEDAT43 - İLK YARI BASKI ALARMI</b>\n\n"
-                            f"🏆 <b>Lig:</b> {league.get('country')} - {league.get('name')}\n"
-                            f"⚽ <b>Maç:</b> {ev_ad} <b>{ev_gol} - {dep_gol}</b> {dep_ad}\n"
-                            f"⏱ <b>Dakika:</b> {dakika}'\n\n"
-                            f"📊 <b>İlk Yarı Baskısı:</b>\n"
-                            f"• Şut: {toplam_sut} ({toplam_isabet} İsabet) | Korner: {toplam_korner}\n"
-                            f"🧤 <b>Kurtarışlar:</b> Ev: {ev_s['kurtaris']} | Dep: {dep_s['kurtaris']}\n\n"
-                            f"💡 <b>TERCİH:</b> 💣 <b>İlk Yarı {hedef_ust} ÜST</b>\n"
-                            f"⚠️ <i>KURAL: Oran 1.60 altındaysa girme!</i>\n"
-                            f"💰 <b>Kasa Girişi:</b> Kasanın %2'si"
-                        )
-                        telegram_ilet(bildiri, gif_gonder=True)
-                        bildirilen_maclar.add(f"{mac_id}_IY1")
-                        print(f"[BİLDİRİLDİ - İY1] {ev_ad} vs {dep_ad}", flush=True)
-
-            except Exception as e:
-                continue
-
-    except Exception as genel_e:
-        print(f"[TARAMA HATA]: {genel_e}", flush=True)
-
-def analiz_dongusu():
-    time.sleep(3)
-    telegram_ilet("👑 <b>Sedat43 Gol Avcısı (Ultra Kota Modu) Devrede!</b>\n\n• Sadece 16:00 - 00:00 arası aktif.\n• 12 dakikalık güvenli tarama döngüsü.")
-
-    while True:
-        try:
-            anlik = datetime.now(TURKIYE_SAATI)
-            saat = anlik.hour
-
-            # KOTA KORUMA SAATLERİ: Sadece 16:00 ile 00:00 arası çalışır
-            if 16 <= saat < 24:
-                canli_tara()
-                time.sleep(720) # 12 dakikada bir tarama (Kotayı korur)
-            else:
-                print("[UYKU] Maç dışı saatler, kota tamamen korunuyor...", flush=True)
-                time.sleep(3600) # Diğer saatlerde saat başı kontrol
-
-        except Exception as e:
-            time.sleep(30)
-
-def uyku_savar_dongusu():
-    time.sleep(15)
-    sunucu_url = "https://iddaa-bot-05vw.onrender.com"
-    while True:
-        try:
-            requests.get(sunucu_url, timeout=10)
-        except Exception:
-            pass
-        time.sleep(300)
-
-class RenderHealthServer(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.end_headers()
-        self.wfile.write(b"Sedat43 Ultra Kota Aktif!")
-    def log_message(self, format, *args):
+def scan_matches():
+    print(f"\n--- Tarama Başlatıldı: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---")
+    
+    # 1. Aşama: Canlı maç listesini çek (live=all)
+    data = api_request("live", params={"status": "all"})
+    if not data or "matches" not in data:
+        print("Canlı maç verisi alınamadı.")
         return
 
-def web_sunucu_baslat():
-    port = int(os.environ.get("PORT", 8080))
-    sunucu = HTTPServer(("0.0.0.0", port), RenderHealthServer)
-    sunucu.serve_forever()
+    matches = data["matches"]
+    print(f"Toplam canlı maç sayısı: {len(matches)}")
 
-threading.Thread(target=web_sunucu_baslat, daemon=True).start()
-threading.Thread(target=uyku_savar_dongusu, daemon=True).start()
+    for match in matches:
+        league = match.get("league_name")
+        minute = match.get("minute", 0)
+        score_diff = abs(match.get("home_score", 0) - match.get("away_score", 0))
+        match_id = match.get("id")
+        home_team = match.get("home_team")
+        away_team = match.get("away_team")
 
-analiz_dongusu()
+        # Filtre 1: Beyaz liste ve Skor Farkı Kontrolü (Skor farkı en fazla 1 olmalı)
+        if league in WHITE_LIST and score_diff <= 1:
+            
+            # İlk Yarı Baskı Aralığı: 25 - 35 dakika
+            # İkinci Yarı Baskı Aralığı: 60 - 78 dakika
+            is_first_half_target = (25 <= minute <= 35)
+            is_second_half_target = (60 <= minute <= 78)
+
+            if is_first_half_target or is_second_half_target:
+                print(f"Şartları sağlayan maç bulundu: {home_team} vs {away_team} (Dakika: {minute})")
+                
+                # 2. Aşama: Şartları geçen maçlar için detaylı istatistik isteği at
+                stats = api_request(f"matches/{match_id}/stats")
+                
+                if stats:
+                    message = (
+                        f"🚨 *Maç Sinyali Tespit Edildi!* \n\n"
+                        f"⚽ {home_team} vs {away_team}\n"
+                        f"🏆 Lig: {league}\n"
+                        f"⏱ Dakika: {minute}\n"
+                        f"📊 Skor Farkı: {score_diff}"
+                    )
+                    send_telegram_message(message)
+                    print(f"Bildirim gönderildi: {home_team} - {away_team}")
+
+def main():
+    print("Bot başlatıldı. Çalışma saat aralığı: 13:00 - 00:30 (20 dakikalık periyotlar)")
+    while True:
+        if is_within_working_hours():
+            scan_matches()
+        else:
+            print(f"Çalışma saatleri dışındayız ({datetime.now().strftime('%H:%M')}). Bekleniyor...")
+        
+        # 20 dakika = 1200 saniye bekleme süresi
+        time.sleep(1200)
+
+if __name__ == "__main__":
+    main()
