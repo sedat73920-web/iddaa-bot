@@ -1,27 +1,41 @@
+import os
 import time
 import requests
 from datetime import datetime, time as dt_time
+from threading import Thread
+from flask import Flask
+
+# --- RENDER PORT HATASI ÇÖZÜCÜ WEB SUNUCUSU ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot aktif ve çalışıyor!"
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = Thread(target=run_web)
+    t.start()
 
 # --- AYARLAR VE YAPILANDIRMA ---
-API_KEY = "9009059246:AAHcZwhdQqwl6qkI28LeM_1hQLxpwsc41wU"  # Telegram Bot Token / API Anahtarı
-BASE_URL = "https://api.example.com/v1"  # API servis adresiniz
-WHITE_LIST = ["Süper Lig", "Premier League", "La Liga", "Serie A", "Bundesliga"]  # Beyaz liste ligler
+API_KEY = "9009059246:AAHcZwhdQqwl6qkI28LeM_1hQLxpwsc41wU"
+BASE_URL = "https://api.example.com/v1"
+WHITE_LIST = ["Süper Lig", "Premier League", "La Liga", "Serie A", "Bundesliga"]
 
-# İstek sayacı ve sıfırlama takibi
 request_count = 0
 last_reset_time = time.time()
 
 def check_daily_limit():
     global request_count, last_reset_time
     current_time = time.time()
-    
-    # 24 saatte bir sayacı sıfırla (86400 saniye = 24 saat)
     if current_time - last_reset_time >= 86400:
         request_count = 0
         last_reset_time = current_time
-
     if request_count >= 100:
-        print("Günlük 100 istek sınırına ulaşıldı. Kota yenilenene kadar bekleniyor...")
+        print("Günlük 100 istek sınırına ulaşıldı.")
         return False
     return True
 
@@ -29,20 +43,14 @@ def api_request(endpoint, params=None):
     global request_count
     if not check_daily_limit():
         return None
-        
     url = f"{BASE_URL}/{endpoint}"
     headers = {"Authorization": f"Bearer {API_KEY}"}
-    
     try:
         response = requests.get(url, headers=headers, params=params)
         request_count += 1
-        print(f"API İsteği Yapıldı. Günlük Toplam İstek: {request_count}/100")
-        
         if response.status_code == 200:
             return response.json()
-        else:
-            print(f"API Hatası: {response.status_code}")
-            return None
+        return None
     except Exception as e:
         print(f"Bağlantı Hatası: {e}")
         return None
@@ -52,34 +60,25 @@ def send_telegram_message(message):
     chat_id = "TELEGRAM_CHAT_ID"
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
-    
     try:
         requests.post(url, json=payload)
     except Exception as e:
-        print(f"Telegram Gönderim Hatası: {e}")
+        print(f"Telegram Hatası: {e}")
 
 def is_within_working_hours():
-    """Çalışma saatlerini kontrol eder: 13:00 ile 00:30 arası"""
     now = datetime.now().time()
     start_time = dt_time(13, 0)
     end_time = dt_time(0, 30)
-    
     if start_time <= now or now <= end_time:
         return True
     return False
 
 def scan_matches():
     print(f"\n--- Tarama Başlatıldı: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---")
-    
     data = api_request("live", params={"status": "all"})
     if not data or "matches" not in data:
-        print("Canlı maç verisi alınamadı.")
         return
-
-    matches = data["matches"]
-    print(f"Toplam canlı maç sayısı: {len(matches)}")
-
-    for match in matches:
+    for match in data["matches"]:
         league = match.get("league_name")
         minute = match.get("minute", 0)
         score_diff = abs(match.get("home_score", 0) - match.get("away_score", 0))
@@ -88,35 +87,19 @@ def scan_matches():
         away_team = match.get("away_team")
 
         if league in WHITE_LIST and score_diff <= 1:
-            is_first_half_target = (25 <= minute <= 35)
-            is_second_half_target = (60 <= minute <= 78)
-
-            if is_first_half_target or is_second_half_target:
-                print(f"Şartları sağlayan maç bulundu: {home_team} vs {away_team} (Dakika: {minute})")
-                
+            if (25 <= minute <= 35) or (60 <= minute <= 78):
                 stats = api_request(f"matches/{match_id}/stats")
-                
                 if stats:
-                    message = (
-                        f"🚨 *Maç Sinyali Tespit Edildi!* \n\n"
-                        f"⚽ {home_team} vs {away_team}\n"
-                        f"🏆 Lig: {league}\n"
-                        f"⏱ Dakika: {minute}\n"
-                        f"📊 Skor Farkı: {score_diff}"
-                    )
+                    message = f"🚨 *Maç Sinyali!* \n⚽ {home_team} vs {away_team}\n🏆 {league}\n⏱ Dakika: {minute}"
                     send_telegram_message(message)
-                    print(f"Bildirim gönderildi: {home_team} - {away_team}")
 
-def main():
-    print("Bot başlatıldı. Çalışma saat aralığı: 13:00 - 00:30 (20 dakikalık periyotlar)")
+def bot_loop():
+    print("Bot döngüsü başlatıldı (13:00 - 00:30, 20 dk periyot).")
     while True:
         if is_within_working_hours():
             scan_matches()
-        else:
-            print(f"Çalışma saatleri dışındayız ({datetime.now().strftime('%H:%M')}). Bekleniyor...")
-        
-        # 20 dakika = 1200 saniye
         time.sleep(1200)
 
 if __name__ == "__main__":
-    main()
+    keep_alive()
+    bot_loop()
