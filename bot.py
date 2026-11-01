@@ -1,24 +1,6 @@
-import os
 import time
 import requests
 from datetime import datetime, time as dt_time
-from threading import Thread
-from flask import Flask
-
-# --- WEB SUNUCUSU (Render Port Hatası Almamak İçin) ---
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "Iddaa Bot aktif ve çalışıyor!"
-
-def run_web():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
-
-def keep_alive():
-    t = Thread(target=run_web)
-    t.start()
 
 # --- AYARLAR VE YAPILANDIRMA ---
 API_KEY = "9009059246:AAHcZwhdQqwl6qkI28LeM_1hQLxpwsc41wU"  # Telegram Bot Token / API Anahtarı
@@ -125,8 +107,8 @@ def scan_matches():
                     send_telegram_message(message)
                     print(f"Bildirim gönderildi: {home_team} - {away_team}")
 
-def bot_loop():
-    print("Bot döngüsü başlatıldı. Çalışma saat aralığı: 13:00 - 00:30 (20 dakikalık periyotlar)")
+def main():
+    print("Bot başlatıldı. Çalışma saat aralığı: 13:00 - 00:30 (20 dakikalık periyotlar)")
     while True:
         if is_within_working_hours():
             scan_matches()
@@ -136,7 +118,4 @@ def bot_loop():
         time.sleep(1200)
 
 if __name__ == "__main__":
-    # Web sunucusunu arka planda başlat (Render port kontrolünü geçmek için)
-    keep_alive()
-    # Bot döngüsünü başlat
-    bot_loop()
+    main()
