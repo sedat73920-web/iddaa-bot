@@ -8,7 +8,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 
 os.environ["PYTHONUNBUFFERED"] = "1"
 
-print(">>> [SISTEM] Cift Kademeli Gol Avcisi Baslatildi <<<", flush=True)
+print(">>> [SISTEM] Sedat43 Ultra Kota Dostu Mod Aktif <<<", flush=True)
 
 TELEGRAM_BOT_TOKEN = "9009059246:AAHcZwhdQqwl6qkI28LeM_1hQLxpwsc41wU"
 TELEGRAM_CHAT_ID = "769164600"
@@ -28,15 +28,18 @@ TURKIYE_SAATI = timezone(timedelta(hours=3))
 bildirilen_maclar = set()
 aktif_gun = datetime.now(TURKIYE_SAATI).day
 
-KISIR_ULKELER = [
-    "egypt", "morocco", "algeria", "tunisia", "iran", "greece", 
-    "argentina", "finland", "iceland", "ireland", "estonia", "latvia", "lithuania"
+BEYAZ_LIGLER = [
+    "premier league", "championship", "league one",
+    "bundesliga", "2. bundesliga",
+    "la liga", "segunda division",
+    "serie a", "serie b",
+    "ligue 1", "ligue 2",
+    "eredivisie", "primeira liga",
+    "süper lig", "1. lig",
+    "pro league", "superliga", "super league",
+    "champions league", "europa league", "conference league",
+    "women's super league", "nwsl", "uefa women's champions league"
 ]
-KISIR_LIGLER = [
-    "serie c", "primera b", "segunda b", "super league 2", 
-    "botola", "girabola", "national", "ligue 2"
-]
-COPE_LIGLER = ["u19", "u20", "u21", "women", "kadınlar", "amateur", "reserve"]
 
 def telegram_ilet(mesaj, gif_gonder=False):
     try:
@@ -120,12 +123,10 @@ def canli_tara():
                     continue
 
                 league = m.get("league", {})
-                lig_ad = league.get("name", "Lig")
-                ulke = league.get("country", "")
-                tam_lig = f"{lig_ad} {ulke}".lower()
-                ulke_kucuk = ulke.lower()
+                lig_ad = str(league.get("name", "")).lower()
+                ulke = str(league.get("country", "")).lower()
 
-                if any(cl in tam_lig for cl in COPE_LIGLER) or any(ku in ulke_kucuk for ku in KISIR_ULKELER):
+                if not any(bl in lig_ad for bl in BEYAZ_LIGLER):
                     continue
 
                 goals = m.get("goals", {})
@@ -134,8 +135,8 @@ def canli_tara():
                 toplam_gol = ev_gol + dep_gol
                 fark = abs(ev_gol - dep_gol)
 
-                ikinci_yari_uygun = (60 <= dakika <= 76 and fark <= 2 and f"{mac_id}_IY2" not in bildirilen_maclar)
-                ilk_yari_uygun = (25 <= dakika <= 38 and fark <= 2 and toplam_gol <= 3 and f"{mac_id}_IY1" not in bildirilen_maclar)
+                ikinci_yari_uygun = (60 <= dakika <= 78 and fark <= 2 and f"{mac_id}_IY2" not in bildirilen_maclar)
+                ilk_yari_uygun = (25 <= dakika <= 39 and fark <= 2 and toplam_gol <= 3 and f"{mac_id}_IY1" not in bildirilen_maclar)
 
                 if not (ikinci_yari_uygun or ilk_yari_uygun):
                     continue
@@ -160,10 +161,10 @@ def canli_tara():
                             dep_tehlike = (dep_s["isabet"] * 2.3) + ((dep_s["sut"] - dep_s["isabet"]) * 0.7) + (dep_s["korner"] * 1.1) + (ev_s["kurtaris"] * 1.5)
                             toplam_tehlike = round((ev_tehlike * 1.12) + dep_tehlike, 1)
 
-                            if toplam_tehlike >= 25.0:
+                            if toplam_tehlike >= 24.0:
                                 bildiri = (
-                                    f"🔥 <b>İKİNCİ YARI GOL AVCISI</b>\n\n"
-                                    f"🏆 <b>Lig:</b> {ulke} - {lig_ad}\n"
+                                    f"🔥 <b>SEDAT43 - İKİNCİ YARI GOL AVCISI</b>\n\n"
+                                    f"🏆 <b>Lig:</b> {league.get('country')} - {league.get('name')}\n"
                                     f"⚽ <b>Maç:</b> {ev_ad} <b>{ev_gol} - {dep_gol}</b> {dep_ad}\n"
                                     f"⏱ <b>Dakika:</b> {dakika}'\n\n"
                                     f"📊 <b>Baskı Verisi:</b>\n"
@@ -180,15 +181,15 @@ def canli_tara():
                     if toplam_sut >= 5 and toplam_isabet >= 2 and toplam_korner >= 2:
                         hedef_ust = toplam_gol + 0.5
                         bildiri = (
-                            f"⚡ <b>İLK YARI BASKI ALARMI</b>\n\n"
-                            f"🏆 <b>Lig:</b> {ulke} - {lig_ad}\n"
+                            f"⚡ <b>SEDAT43 - İLK YARI BASKI ALARMI</b>\n\n"
+                            f"🏆 <b>Lig:</b> {league.get('country')} - {league.get('name')}\n"
                             f"⚽ <b>Maç:</b> {ev_ad} <b>{ev_gol} - {dep_gol}</b> {dep_ad}\n"
                             f"⏱ <b>Dakika:</b> {dakika}'\n\n"
                             f"📊 <b>İlk Yarı Baskısı:</b>\n"
                             f"• Şut: {toplam_sut} ({toplam_isabet} İsabet) | Korner: {toplam_korner}\n"
                             f"🧤 <b>Kurtarışlar:</b> Ev: {ev_s['kurtaris']} | Dep: {dep_s['kurtaris']}\n\n"
                             f"💡 <b>TERCİH:</b> 💣 <b>İlk Yarı {hedef_ust} ÜST</b>\n"
-                            f"⚠️ <i>KURAL: Oran 1.60 altındaysa kesinlikle girme!</i>\n"
+                            f"⚠️ <i>KURAL: Oran 1.60 altındaysa girme!</i>\n"
                             f"💰 <b>Kasa Girişi:</b> Kasanın %2'si"
                         )
                         telegram_ilet(bildiri, gif_gonder=True)
@@ -203,32 +204,20 @@ def canli_tara():
 
 def analiz_dongusu():
     time.sleep(3)
-    telegram_ilet("👑 <b>Çift Kademeli Gol Avcısı Başarıyla Devrede!</b>\n\n• İlk Yarı Baskısı (25-38' | Fark <= 2) devrede.\n• İkinci Yarı Avcısı (60-76' | Fark <= 2) devrede.\n• Hareketli GIF entegrasyonu aktif.\n• Hafta içi 18:30, Hafta sonu 17:00 mesaisi aktif.")
+    telegram_ilet("👑 <b>Sedat43 Gol Avcısı (Ultra Kota Modu) Devrede!</b>\n\n• Sadece 16:00 - 00:00 arası aktif.\n• 12 dakikalık güvenli tarama döngüsü.")
 
     while True:
         try:
             anlik = datetime.now(TURKIYE_SAATI)
             saat = anlik.hour
-            dakika = anlik.minute
-            hafta_sonu = anlik.weekday() >= 5
 
-            calissin = False
-            bekleme = 300
-
-            if hafta_sonu:
-                if (17 <= saat < 23) or (saat == 23 and dakika <= 55):
-                    calissin = True
-                    bekleme = 300
-            else:
-                if (18 <= saat < 23 and (saat > 18 or dakika >= 30)) or (saat == 23 and dakika <= 55):
-                    calissin = True
-                    bekleme = 300
-
-            if calissin:
+            # KOTA KORUMA SAATLERİ: Sadece 16:00 ile 00:00 arası çalışır
+            if 16 <= saat < 24:
                 canli_tara()
-                time.sleep(bekleme)
+                time.sleep(720) # 12 dakikada bir tarama (Kotayı korur)
             else:
-                time.sleep(600)
+                print("[UYKU] Maç dışı saatler, kota tamamen korunuyor...", flush=True)
+                time.sleep(3600) # Diğer saatlerde saat başı kontrol
 
         except Exception as e:
             time.sleep(30)
@@ -248,7 +237,7 @@ class RenderHealthServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Bot Aktif Calisiyor!")
+        self.wfile.write(b"Sedat43 Ultra Kota Aktif!")
     def log_message(self, format, *args):
         return
 
