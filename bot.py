@@ -13,7 +13,7 @@ print(">>> [SISTEM] Cift Kademeli Gol Avcisi Baslatildi <<<", flush=True)
 # ==========================================
 # 1. YAPILANDIRMA VE KİMLİK BİLGİLERİ
 # ==========================================
-TELEGRAM_BOT_TOKEN = "8912502756:AAHe_0qe2dokTtRXh1EYpgVexOTuCHdZk6Q"
+TELEGRAM_BOT_TOKEN = "9009059246:AAHcZwhdQqwl6qkI28LeM_1hQLxpwsc41wU"
 TELEGRAM_CHAT_ID = "769164600"
 FOOTBALL_API_KEY = "d940a36cc7b3b1f03bd41b8880721772"
 
@@ -24,6 +24,9 @@ API_HEADERS = {
     "x-rapidapi-host": "v3.football.api-sports.io",
     "x-rapidapi-key": FOOTBALL_API_KEY
 }
+
+# Canlı gol alarmı GIF bağlantısı (Hızlı CDN üzerinden)
+GOL_GIF_URL = "https://media.giphy.com/media/unQ3IJU2RG7DO/giphy.gif"
 
 TURKIYE_SAATI = timezone(timedelta(hours=3))
 bildirilen_maclar = set()
@@ -41,20 +44,33 @@ KISIR_LIGLER = [
 COPE_LIGLER = ["u19", "u20", "u21", "women", "kadınlar", "amateur", "reserve"]
 
 # ==========================================
-# 2. TELEGRAM MESAJ SERVİSİ
+# 2. TELEGRAM BİLDİRİM VE GIF SERVİSİ
 # ==========================================
-def telegram_ilet(mesaj):
+def telegram_ilet(mesaj, gif_gonder=False):
+    # Mesajı ilet
     try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {
+        url_msg = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload_msg = {
             "chat_id": TELEGRAM_CHAT_ID,
             "text": mesaj,
             "parse_mode": "HTML",
             "disable_web_page_preview": True
         }
-        requests.post(url, json=payload, timeout=12)
+        requests.post(url_msg, json=payload_msg, timeout=12)
     except Exception as e:
-        print(f"[TELEGRAM HATA]: {e}", flush=True)
+        print(f"[TELEGRAM MESAJ HATA]: {e}", flush=True)
+
+    # GIF animasyonu gönder (Sinyal düşerse)
+    if gif_gonder:
+        try:
+            url_gif = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendAnimation"
+            payload_gif = {
+                "chat_id": TELEGRAM_CHAT_ID,
+                "animation": GOL_GIF_URL
+            }
+            requests.post(url_gif, json=payload_gif, timeout=10)
+        except Exception as e:
+            print(f"[TELEGRAM GIF HATA]: {e}", flush=True)
 
 # ==========================================
 # 3. İSTATİSTİK AYRIŞTIRICI
@@ -180,7 +196,7 @@ def canli_tara():
                                     f"💡 <b>TERCİH:</b> ⚽ <b>1 Gol Daha Olur (Sıradaki Gol)</b>\n"
                                     f"💰 <b>Kasa Girişi:</b> Kasanın %2.5'i"
                                 )
-                                telegram_ilet(bildiri)
+                                telegram_ilet(bildiri, gif_gonder=True)
                                 bildirilen_maclar.add(f"{mac_id}_IY2")
                                 print(f"[BİLDİRİLDİ - İY2] {ev_ad} vs {dep_ad}", flush=True)
 
@@ -202,7 +218,7 @@ def canli_tara():
                             f"⚠️ <i>KURAL: Oran 1.60 altındaysa kesinlikle girme!</i>\n"
                             f"💰 <b>Kasa Girişi:</b> Kasanın %2'si"
                         )
-                        telegram_ilet(bildiri)
+                        telegram_ilet(bildiri, gif_gonder=True)
                         bildirilen_maclar.add(f"{mac_id}_IY1")
                         print(f"[BİLDİRİLDİ - İY1] {ev_ad} vs {dep_ad}", flush=True)
 
@@ -217,7 +233,7 @@ def canli_tara():
 # ==========================================
 def analiz_dongusu():
     time.sleep(3)
-    telegram_ilet("👑 <b>Çift Kademeli Gol Avcısı Başarıyla Devrede!</b>\n\n• İlk Yarı Baskısı (25-38' | Fark <= 2) devrede.\n• İkinci Yarı Avcısı (60-76' | Fark <= 2) devrede.\n• Hafta içi 18:30, Hafta sonu 17:00 mesaisi aktif.")
+    telegram_ilet("👑 <b>Çift Kademeli Gol Avcısı Başarıyla Devrede!</b>\n\n• İlk Yarı Baskısı (25-38' | Fark <= 2) devrede.\n• İkinci Yarı Avcısı (60-76' | Fark <= 2) devrede.\n• Hareketli GIF entegrasyonu aktif.\n• Hafta içi 18:30, Hafta sonu 17:00 mesaisi aktif.")
 
     while True:
         try:
