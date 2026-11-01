@@ -7,7 +7,7 @@ API_KEY = "9009059246:AAHcZwhdQqwl6qkI28LeM_1hQLxpwsc41wU"  # Telegram Bot Token
 BASE_URL = "https://api.example.com/v1"  # API servis adresiniz
 WHITE_LIST = ["Süper Lig", "Premier League", "La Liga", "Serie A", "Bundesliga"]  # Beyaz liste ligler
 
-# İstek sayacı ve sıfırlama takibi için değişkenler
+# İstek sayacı ve sıfırlama takibi
 request_count = 0
 last_reset_time = time.time()
 
@@ -115,6 +115,7 @@ def main():
         else:
             print(f"Çalışma saatleri dışındayız ({datetime.now().strftime('%H:%M')}). Bekleniyor...")
         
+        # 20 dakika = 1200 saniye
         time.sleep(1200)
 
 if __name__ == "__main__":
