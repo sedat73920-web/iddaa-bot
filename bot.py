@@ -2,6 +2,23 @@ import os
 import time
 import requests
 from datetime import datetime, time as dt_time
+from threading import Thread
+from flask import Flask
+
+# --- WEB SUNUCUSU (Render Port Hatası Almamak İçin) ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Iddaa Bot aktif ve çalışıyor!"
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = Thread(target=run_web)
+    t.start()
 
 # --- AYARLAR VE YAPILANDIRMA ---
 API_KEY = "9009059246:AAHcZwhdQqwl6qkI28LeM_1hQLxpwsc41wU"  # Telegram Bot Token / API Anahtarı
@@ -65,7 +82,6 @@ def is_within_working_hours():
     start_time = dt_time(13, 0)
     end_time = dt_time(0, 30)
     
-    # Saat 13:00 ile 23:59 arası VEYA 00:00 ile 00:30 arası durumunu kontrol eder
     if start_time <= now or now <= end_time:
         return True
     return False
@@ -73,7 +89,6 @@ def is_within_working_hours():
 def scan_matches():
     print(f"\n--- Tarama Başlatıldı: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---")
     
-    # 1. Aşama: Canlı maç listesini çek (live=all)
     data = api_request("live", params={"status": "all"})
     if not data or "matches" not in data:
         print("Canlı maç verisi alınamadı.")
@@ -90,18 +105,13 @@ def scan_matches():
         home_team = match.get("home_team")
         away_team = match.get("away_team")
 
-        # Filtre 1: Beyaz liste ve Skor Farkı Kontrolü (Skor farkı en fazla 1 olmalı)
         if league in WHITE_LIST and score_diff <= 1:
-            
-            # İlk Yarı Baskı Aralığı: 25 - 35 dakika
-            # İkinci Yarı Baskı Aralığı: 60 - 78 dakika
             is_first_half_target = (25 <= minute <= 35)
             is_second_half_target = (60 <= minute <= 78)
 
             if is_first_half_target or is_second_half_target:
                 print(f"Şartları sağlayan maç bulundu: {home_team} vs {away_team} (Dakika: {minute})")
                 
-                # 2. Aşama: Şartları geçen maçlar için detaylı istatistik isteği at
                 stats = api_request(f"matches/{match_id}/stats")
                 
                 if stats:
@@ -115,16 +125,18 @@ def scan_matches():
                     send_telegram_message(message)
                     print(f"Bildirim gönderildi: {home_team} - {away_team}")
 
-def main():
-    print("Bot başlatıldı. Çalışma saat aralığı: 13:00 - 00:30 (20 dakikalık periyotlar)")
+def bot_loop():
+    print("Bot döngüsü başlatıldı. Çalışma saat aralığı: 13:00 - 00:30 (20 dakikalık periyotlar)")
     while True:
         if is_within_working_hours():
             scan_matches()
         else:
             print(f"Çalışma saatleri dışındayız ({datetime.now().strftime('%H:%M')}). Bekleniyor...")
         
-        # 20 dakika = 1200 saniye bekleme süresi
         time.sleep(1200)
 
 if __name__ == "__main__":
-    main()
+    # Web sunucusunu arka planda başlat (Render port kontrolünü geçmek için)
+    keep_alive()
+    # Bot döngüsünü başlat
+    bot_loop()
